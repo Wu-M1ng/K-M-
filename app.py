@@ -45,7 +45,7 @@ ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', None)
 DEFAULT_SETTINGS = {
     "autoRefresh": {
         "enabled": True,
-        "interval": 3600,  # seconds (1 hour default)
+        "interval": 1800,  # seconds (30 minutes default)
         "refreshBeforeExpiry": 300  # refresh 5 minutes before expiry
     },
     "autoSwitch": {
@@ -53,6 +53,10 @@ DEFAULT_SETTINGS = {
         "checkInterval": 1800,  # check every 30 minutes
         "switchThreshold": 90,  # switch when usage > 90%
         "currentAccountId": None
+    },
+    "statusCheck": {
+        "enabled": True,
+        "interval": 300  # check every 5 minutes
     },
     "notifications": {
         "onRefreshFail": True,
@@ -502,6 +506,58 @@ def auto_switch_account_task():
             save_settings(settings)
             logger.info(f"🔀 Switched to account: {best_account.get('email')} (usage: {best_usage:.1f}%)")
 
+def check_account_status(account):
+    """Check and update account status based on various conditions"""
+    old_status = account.get('status', 'active')
+    new_status = 'active'
+    status_reason = None
+    
+    credentials = account.get('credentials', {})
+    usage = account.get('usage', {})
+    
+    # Check 1: Token expired
+    expires_at = credentials.get('expiresAt', 0)
+    if expires_at and expires_at < int(time.time() * 1000):
+        new_status = 'expired'
+        status_reason = 'Token expired'
+    
+    # Check 2: No refresh token
+    if not credentials.get('refreshToken'):
+        new_status = 'invalid'
+        status_reason = 'No refresh token'
+    
+    # Check 3: Usage limit exceeded (total usage)
+    total_limit = (usage.get('limit', 0) or 0) + (usage.get('freeTrialLimit', 0) or 0)
+    total_current = (usage.get('current', 0) or 0) + (usage.get('freeTrialCurrent', 0) or 0)
+    if total_limit > 0 and total_current >= total_limit:
+        new_status = 'exhausted'
+        status_reason = 'Usage limit exceeded'
+    
+    # Update status if changed
+    if new_status != old_status:
+        account['status'] = new_status
+        account['statusReason'] = status_reason
+        logger.info(f"Account {account.get('email')} status changed: {old_status} -> {new_status} ({status_reason})")
+        return True
+    
+    return False
+
+def auto_status_check_task():
+    """Periodically check all account statuses"""
+    logger.info("🔍 Checking account statuses...")
+    data = load_accounts()
+    
+    changed = 0
+    for account in data.get('accounts', []):
+        if check_account_status(account):
+            changed += 1
+    
+    if changed > 0:
+        save_accounts(data)
+        logger.info(f"✅ Status check completed: {changed} account(s) status changed")
+    else:
+        logger.info("✅ Status check completed: no changes")
+
 def setup_scheduler():
     """Setup scheduler with current settings"""
     global scheduler_jobs
@@ -539,6 +595,19 @@ def setup_scheduler():
         )
         scheduler_jobs['auto_switch'] = job
         logger.info(f"📅 Auto switch check scheduled every {interval} seconds")
+    
+    # Add status check job
+    status_check = settings.get('statusCheck', {})
+    if status_check.get('enabled', True):
+        interval = status_check.get('interval', 300)
+        job = scheduler.add_job(
+            func=auto_status_check_task,
+            trigger=IntervalTrigger(seconds=interval),
+            id='status_check',
+            replace_existing=True
+        )
+        scheduler_jobs['status_check'] = job
+        logger.info(f"📅 Status check scheduled every {interval} seconds")
 
 # ==================== Auth Decorator ====================
 
@@ -695,10 +764,13 @@ def trigger_job(job_id):
     try:
         if job_id == 'auto_refresh':
             auto_refresh_tokens_task()
-            return jsonify({"success": True, "message": "Token refresh triggered"})
+            return jsonify({"success": True, "message": "Token 刷新已触发"})
         elif job_id == 'auto_switch':
             auto_switch_account_task()
-            return jsonify({"success": True, "message": "Auto switch check triggered"})
+            return jsonify({"success": True, "message": "自动换号检查已触发"})
+        elif job_id == 'status_check':
+            auto_status_check_task()
+            return jsonify({"success": True, "message": "状态检查已触发"})
         else:
             return jsonify({"success": False, "error": "Unknown job"}), 404
     except Exception as e:
@@ -841,21 +913,48 @@ def get_stats():
     settings = load_settings()
     accounts = data.get('accounts', [])
     
+    # Calculate total credits including free trial
+    total_credits = 0
+    used_credits = 0
+    for a in accounts:
+        usage = a.get('usage', {})
+        total_credits += (usage.get('limit', 0) or 0) + (usage.get('freeTrialLimit', 0) or 0)
+        used_credits += (usage.get('current', 0) or 0) + (usage.get('freeTrialCurrent', 0) or 0)
+    
+    # Get next refresh time
+    next_refresh_time = None
+    try:
+        refresh_job = scheduler.get_job('auto_refresh')
+        if refresh_job and refresh_job.next_run_time:
+            next_refresh_time = refresh_job.next_run_time.isoformat()
+    except:
+        pass
+    
+    status_check = settings.get('statusCheck', {})
+    
     stats = {
         "total": len(accounts),
         "active": len([a for a in accounts if a.get('status') == 'active']),
-        "totalCredits": sum(a.get('usage', {}).get('limit', 0) for a in accounts),
-        "usedCredits": sum(a.get('usage', {}).get('current', 0) for a in accounts),
+        "expired": len([a for a in accounts if a.get('status') in ['expired', 'trial_expired']]),
+        "exhausted": len([a for a in accounts if a.get('status') == 'exhausted']),
+        "totalCredits": total_credits,
+        "usedCredits": used_credits,
         "byProvider": {},
+        "byStatus": {},
         "currentAccountId": settings['autoSwitch'].get('currentAccountId'),
         "autoRefreshEnabled": settings['autoRefresh']['enabled'],
         "autoRefreshInterval": settings['autoRefresh']['interval'],
-        "autoSwitchEnabled": settings['autoSwitch']['enabled']
+        "autoSwitchEnabled": settings['autoSwitch']['enabled'],
+        "statusCheckEnabled": status_check.get('enabled', True),
+        "statusCheckInterval": status_check.get('interval', 300),
+        "nextRefreshTime": next_refresh_time
     }
     
     for account in accounts:
         provider = account.get('idp', 'Unknown')
+        status = account.get('status', 'unknown')
         stats['byProvider'][provider] = stats['byProvider'].get(provider, 0) + 1
+        stats['byStatus'][status] = stats['byStatus'].get(status, 0) + 1
     
     return jsonify(stats)
 

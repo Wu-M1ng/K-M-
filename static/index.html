@@ -40,6 +40,9 @@
         .account-email { font-weight: bold; color: #333; font-size: 16px; }
         .account-status { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 500; }
         .status-active { background: #c6f6d5; color: #22543d; }
+        .status-expired, .status-trial_expired { background: #fed7d7; color: #822727; }
+        .status-exhausted { background: #feebc8; color: #744210; }
+        .status-invalid { background: #e2e8f0; color: #4a5568; }
         .account-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 15px; }
         .detail-item { font-size: 13px; color: #666; }
         .detail-label { font-weight: 500; color: #333; }
@@ -190,11 +193,21 @@
             try {
                 const response = await fetch('/api/stats', { credentials: 'same-origin' });
                 const stats = await response.json();
+                
+                // 格式化下次刷新时间
+                let nextRefreshText = '';
+                if (stats.nextRefreshTime) {
+                    const nextTime = new Date(stats.nextRefreshTime);
+                    nextRefreshText = `<br><span style="font-size:10px;">下次: ${nextTime.toLocaleTimeString('zh-CN')}</span>`;
+                }
+                
                 const refreshStatus = stats.autoRefreshEnabled ? 
-                    `<span style="color:#48bb78">✓ 自动刷新 (${formatInterval(stats.autoRefreshInterval)})</span>` : 
-                    `<span style="color:#f56565">✗ 自动刷新关闭</span>`;
+                    `<span style="color:#48bb78">✓ 刷新 (${formatInterval(stats.autoRefreshInterval)})</span>${nextRefreshText}` : 
+                    `<span style="color:#f56565">✗ 刷新关闭</span>`;
                 const switchStatus = stats.autoSwitchEnabled ? 
-                    `<span style="color:#48bb78">✓ 自动换号</span>` : '';
+                    `<span style="color:#48bb78">✓ 换号</span>` : '';
+                const statusCheckStatus = stats.statusCheckEnabled ?
+                    `<span style="color:#48bb78">✓ 检查 (${formatInterval(stats.statusCheckInterval)})</span>` : '';
                 
                 document.getElementById('stats').innerHTML = `
                     <div class="stat-card"><h3>总账号</h3><div class="value">${stats.total}</div></div>
@@ -202,7 +215,7 @@
                     <div class="stat-card"><h3>总额度</h3><div class="value">${stats.totalCredits.toFixed(0)}</div></div>
                     <div class="stat-card"><h3>已使用</h3><div class="value">${stats.usedCredits.toFixed(0)}</div></div>
                     <div class="stat-card" style="background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);">
-                        <h3>定时任务</h3><div style="font-size:12px;">${refreshStatus}<br>${switchStatus}</div>
+                        <h3>定时任务</h3><div style="font-size:11px;">${refreshStatus}<br>${statusCheckStatus} ${switchStatus}</div>
                     </div>
                 `;
             } catch (error) {
@@ -399,6 +412,7 @@
             
             const ar = currentSettings.autoRefresh;
             const as = currentSettings.autoSwitch;
+            const sc = currentSettings.statusCheck || { enabled: true, interval: 300 };
             const scheduler = currentSettings.scheduler || {};
             
             let nextRunInfo = '';
@@ -438,6 +452,26 @@
                 </div>
                 
                 <div class="setting-group">
+                    <h3>🔍 状态检查</h3>
+                    <div class="setting-row">
+                        <label>启用状态检查</label>
+                        <input type="checkbox" id="statusCheckEnabled" ${sc.enabled ? 'checked' : ''}>
+                    </div>
+                    <div class="setting-row">
+                        <label>检查间隔</label>
+                        <select id="statusCheckInterval">
+                            <option value="60" ${sc.interval == 60 ? 'selected' : ''}>1 分钟</option>
+                            <option value="180" ${sc.interval == 180 ? 'selected' : ''}>3 分钟</option>
+                            <option value="300" ${sc.interval == 300 ? 'selected' : ''}>5 分钟</option>
+                            <option value="600" ${sc.interval == 600 ? 'selected' : ''}>10 分钟</option>
+                            <option value="900" ${sc.interval == 900 ? 'selected' : ''}>15 分钟</option>
+                            <option value="1800" ${sc.interval == 1800 ? 'selected' : ''}>30 分钟</option>
+                        </select>
+                    </div>
+                    <div class="setting-hint">检查账号状态（Token过期、额度耗尽等）</div>
+                </div>
+                
+                <div class="setting-group">
                     <h3>🔀 自动换号</h3>
                     <div class="setting-row">
                         <label>启用自动换号</label>
@@ -460,8 +494,8 @@
                 </div>
                 
                 <div style="margin-top: 15px;">
-                    <button class="btn btn-info" onclick="triggerRefresh()" style="margin-right: 10px;">立即刷新所有 Token</button>
-                    <button class="btn btn-warning" onclick="triggerSwitch()">立即检查换号</button>
+                    <button class="btn btn-info" onclick="triggerRefresh()" style="margin-right: 10px;">立即刷新所有</button>
+                    <button class="btn btn-warning" onclick="triggerStatusCheck()">立即检查状态</button>
                 </div>
             `;
             
@@ -475,6 +509,10 @@
                         enabled: document.getElementById('autoRefreshEnabled').checked,
                         interval: parseInt(document.getElementById('refreshInterval').value),
                         refreshBeforeExpiry: parseInt(document.getElementById('refreshBeforeExpiry').value)
+                    },
+                    statusCheck: {
+                        enabled: document.getElementById('statusCheckEnabled').checked,
+                        interval: parseInt(document.getElementById('statusCheckInterval').value)
                     },
                     autoSwitch: {
                         enabled: document.getElementById('autoSwitchEnabled').checked,
@@ -501,6 +539,20 @@
                 }
             } catch (error) {
                 alert('保存失败: ' + error.message);
+            }
+        }
+
+        async function triggerStatusCheck() {
+            try {
+                const response = await fetch('/api/scheduler/trigger/status_check', {
+                    method: 'POST',
+                    credentials: 'same-origin'
+                });
+                const result = await response.json();
+                alert(result.message || '状态检查已触发');
+                loadAccounts();
+            } catch (error) {
+                alert('触发失败: ' + error.message);
             }
         }
 
@@ -701,8 +753,18 @@
                     <div class="detail-section">
                         <h3>🔑 凭证</h3>
                         <div class="detail-row"><span class="label">Auth Method:</span><span class="value">${credentials.authMethod || 'N/A'}</span></div>
-                        <div class="detail-row"><span class="label">Region:</span><span class="value">${credentials.region || 'N/A'}</span></div>
                         <div class="detail-row"><span class="label">Token 过期:</span><span class="value">${formatDate(credentials.expiresAt)}</span></div>
+                        ${account.idp === 'BuilderId' ? `
+                        <div class="detail-row"><span class="label">AWS Region:</span><span class="value">${credentials.region || 'us-east-1'}</span></div>
+                        <div style="margin-top: 10px;">
+                            <div class="detail-row"><span class="label">Client ID:</span><button class="copy-btn" onclick="copyText('clientId')">复制</button></div>
+                            <div class="token-value" id="clientId">${credentials.clientId || 'N/A'}</div>
+                        </div>
+                        <div style="margin-top: 10px;">
+                            <div class="detail-row"><span class="label">Client Secret:</span><button class="copy-btn" onclick="copyText('clientSecret')">复制</button></div>
+                            <div class="token-value" id="clientSecret">${credentials.clientSecret || 'N/A'}</div>
+                        </div>
+                        ` : ''}
                         <div style="margin-top: 10px;">
                             <div class="detail-row"><span class="label">Access Token:</span><button class="copy-btn" onclick="copyText('accessToken')">复制</button></div>
                             <div class="token-value" id="accessToken">${credentials.accessToken || 'N/A'}</div>
