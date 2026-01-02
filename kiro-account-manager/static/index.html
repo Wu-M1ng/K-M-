@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiro Account Manager</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        .header { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .header h1 { color: #333; margin-bottom: 10px; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px; }
+        .stat-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; }
+        .stat-card h3 { font-size: 14px; opacity: 0.9; margin-bottom: 5px; }
+        .stat-card .value { font-size: 32px; font-weight: bold; }
+        .controls { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.3s; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-primary:hover { background: #5568d3; }
+        .btn-success { background: #48bb78; color: white; }
+        .btn-success:hover { background: #38a169; }
+        .btn-danger { background: #f56565; color: white; }
+        .btn-danger:hover { background: #e53e3e; }
+        .accounts-grid { display: grid; gap: 15px; }
+        .account-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .account-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .account-email { font-weight: bold; color: #333; font-size: 16px; }
+        .account-status { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+        .status-active { background: #c6f6d5; color: #22543d; }
+        .account-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 15px; }
+        .detail-item { font-size: 14px; color: #666; }
+        .detail-label { font-weight: 500; color: #333; }
+        .progress-bar { background: #e2e8f0; height: 8px; border-radius: 4px; overflow: hidden; margin: 10px 0; }
+        .progress-fill { background: linear-gradient(90deg, #48bb78, #38a169); height: 100%; transition: width 0.3s; }
+        .account-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+        .machine-id { font-family: monospace; background: #f7fafc; padding: 8px; border-radius: 4px; font-size: 12px; margin-top: 10px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
+        .modal-content { background: white; max-width: 600px; margin: 50px auto; padding: 30px; border-radius: 8px; }
+        .modal-content textarea { width: 100%; height: 300px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; }
+        .loading { text-align: center; padding: 40px; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Kiro Account Manager</h1>
+            <div class="stats" id="stats"></div>
+        </div>
+
+        <div class="controls">
+            <button class="btn btn-primary" onclick="showImportModal()">📥 导入账号</button>
+            <button class="btn btn-success" onclick="refreshAllTokens()">🔄 刷新所有Token</button>
+            <button class="btn btn-primary" onclick="exportAccounts()">📤 导出账号</button>
+        </div>
+
+        <div class="accounts-grid" id="accounts"></div>
+    </div>
+
+    <div class="modal" id="importModal">
+        <div class="modal-content">
+            <h2 style="margin-bottom: 15px;">导入账号 JSON</h2>
+            <textarea id="importJson" placeholder="粘贴 JSON 数据..."></textarea>
+            <div style="margin-top: 15px; display: flex; gap: 10px;">
+                <button class="btn btn-success" onclick="importAccounts()">导入</button>
+                <button class="btn" onclick="closeModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let accounts = [];
+
+        async function loadAccounts() {
+            try {
+                const response = await fetch('/api/accounts');
+                const data = await response.json();
+                accounts = data.accounts || [];
+                renderAccounts();
+                loadStats();
+            } catch (error) {
+                console.error('Error loading accounts:', error);
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const stats = await response.json();
+                
+                const statsHtml = `
+                    <div class="stat-card">
+                        <h3>总账号数</h3>
+                        <div class="value">${stats.total}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>活跃账号</h3>
+                        <div class="value">${stats.active}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>总额度</h3>
+                        <div class="value">${stats.totalCredits.toFixed(0)}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>已使用</h3>
+                        <div class="value">${stats.usedCredits.toFixed(0)}</div>
+                    </div>
+                `;
+                
+                document.getElementById('stats').innerHTML = statsHtml;
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        function renderAccounts() {
+            const container = document.getElementById('accounts');
+            
+            if (accounts.length === 0) {
+                container.innerHTML = '<div class="loading">暂无账号，请导入账号数据</div>';
+                return;
+            }
+
+            container.innerHTML = accounts.map(account => {
+                const usage = account.usage || {};
+                const percentUsed = ((usage.current / usage.limit) * 100).toFixed(1);
+                
+                return `
+                    <div class="account-card">
+                        <div class="account-header">
+                            <div class="account-email">${account.email}</div>
+                            <span class="account-status status-${account.status}">${account.status}</span>
+                        </div>
+                        
+                        <div class="account-details">
+                            <div class="detail-item">
+                                <span class="detail-label">Provider:</span> ${account.idp}
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Nickname:</span> ${account.nickname}
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Subscription:</span> ${account.subscription?.type || 'N/A'}
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Days Remaining:</span> ${account.subscription?.daysRemaining || 'N/A'}
+                            </div>
+                        </div>
+
+                        <div>
+                            <div style="display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 5px;">
+                                <span>额度使用</span>
+                                <span>${usage.current?.toFixed(2) || 0} / ${usage.limit || 0} (${percentUsed}%)</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${percentUsed}%"></div>
+                            </div>
+                        </div>
+
+                        <div class="machine-id">
+                            <strong>Machine ID:</strong> ${account.machineId || '未绑定'}
+                        </div>
+
+                        <div class="account-actions">
+                            <button class="btn btn-success" onclick="refreshToken('${account.id}')">🔄 刷新Token</button>
+                            <button class="btn btn-primary" onclick="regenerateMachineId('${account.id}')">🔑 重新生成机器码</button>
+                            <button class="btn btn-danger" onclick="deleteAccount('${account.id}')">🗑️ 删除</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function showImportModal() {
+            document.getElementById('importModal').style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('importModal').style.display = 'none';
+        }
+
+        async function importAccounts() {
+            try {
+                const json = document.getElementById('importJson').value;
+                const data = JSON.parse(json);
+                
+                const response = await fetch('/api/accounts/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert(result.message);
+                    closeModal();
+                    loadAccounts();
+                } else {
+                    alert('导入失败: ' + result.error);
+                }
+            } catch (error) {
+                alert('导入失败: ' + error.message);
+            }
+        }
+
+        async function refreshToken(accountId) {
+            try {
+                const response = await fetch(`/api/accounts/${accountId}/refresh`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('Token 刷新成功');
+                    loadAccounts();
+                } else {
+                    alert('刷新失败: ' + result.error);
+                }
+            } catch (error) {
+                alert('刷新失败: ' + error.message);
+            }
+        }
+
+        async function regenerateMachineId(accountId) {
+            try {
+                const response = await fetch(`/api/accounts/${accountId}/machine-id`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('机器码已重新生成: ' + result.machineId);
+                    loadAccounts();
+                } else {
+                    alert('生成失败: ' + result.error);
+                }
+            } catch (error) {
+                alert('生成失败: ' + error.message);
+            }
+        }
+
+        async function deleteAccount(accountId) {
+            if (!confirm('确定要删除这个账号吗？')) return;
+            
+            try {
+                const response = await fetch(`/api/accounts/${accountId}`, {
+                    method: 'DELETE'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('账号已删除');
+                    loadAccounts();
+                } else {
+                    alert('删除失败: ' + result.error);
+                }
+            } catch (error) {
+                alert('删除失败: ' + error.message);
+            }
+        }
+
+        async function refreshAllTokens() {
+            if (!confirm('确定要刷新所有账号的 Token 吗？')) return;
+            
+            alert('开始刷新所有 Token，请稍候...');
+            
+            for (const account of accounts) {
+                await refreshToken(account.id);
+            }
+            
+            alert('所有 Token 刷新完成');
+            loadAccounts();
+        }
+
+        async function exportAccounts() {
+            try {
+                const response = await fetch('/api/export');
+                const data = await response.json();
+                
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `kiro-accounts-${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+            } catch (error) {
+                alert('导出失败: ' + error.message);
+            }
+        }
+
+        // Load accounts on page load
+        loadAccounts();
+        
+        // Auto refresh every 5 minutes
+        setInterval(loadAccounts, 300000);
+    </script>
+</body>
+</html>
