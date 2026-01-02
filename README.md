@@ -83,10 +83,7 @@ docker run -d \
 ### 方法 3: 使用预构建的 Docker 镜像
 
 ```bash
-# 从 Docker Hub 拉取
-docker pull yourusername/kiro-account-manager:latest
-
-# 或从 GitHub Container Registry 拉取
+# 从 GitHub Container Registry 拉取
 docker pull ghcr.io/yourusername/kiro-account-manager:latest
 
 # 运行
@@ -94,7 +91,7 @@ docker run -d \
   -p 8000:8000 \
   -e ADMIN_PASSWORD=your_secure_password \
   -v $(pwd)/data:/app/data \
-  yourusername/kiro-account-manager:latest
+  ghcr.io/yourusername/kiro-account-manager:latest
 ```
 
 ### 方法 4: 部署到 Koyeb
@@ -118,7 +115,7 @@ docker run -d \
 #### 通过 Docker 部署
 
 1. 在 Koyeb 选择 Docker 部署方式
-2. 使用镜像：`yourusername/kiro-account-manager:latest`
+2. 使用镜像：`ghcr.io/yourusername/kiro-account-manager:latest`
 3. 设置相同的环境变量
 
 ## 使用说明
@@ -173,18 +170,15 @@ docker run -d \
 
 ## GitHub Actions 自动构建
 
-项目包含 GitHub Actions 工作流，可以自动构建和发布 Docker 镜像。
+项目包含 GitHub Actions 工作流，可以自动构建和发布 Docker 镜像到 GitHub Container Registry。
 
 ### 设置步骤
 
-1. 在 GitHub 仓库设置中添加 Secrets：
-   - `DOCKER_USERNAME`: Docker Hub 用户名
-   - `DOCKER_PASSWORD`: Docker Hub 访问令牌
+1. **无需额外配置** - GitHub Actions 会自动使用 `GITHUB_TOKEN` 进行认证
 
 2. 推送代码到 `main` 或 `master` 分支，自动触发构建
 
 3. 镜像会发布到：
-   - Docker Hub: `docker.io/yourusername/kiro-account-manager`
    - GitHub Container Registry: `ghcr.io/yourusername/kiro-account-manager`
 
 ### 版本标签
@@ -192,6 +186,15 @@ docker run -d \
 - `latest`: 最新的 main/master 分支构建
 - `v1.0.0`: 语义化版本标签（推送 git tag 时触发）
 - `main`: main 分支的最新构建
+
+### 使镜像公开访问
+
+默认情况下，镜像是私有的。要使其公开：
+
+1. 访问 `https://github.com/yourusername/kiro-account-manager/pkgs/container/kiro-account-manager`
+2. 点击 "Package settings"
+3. 在 "Danger Zone" 中选择 "Change visibility"
+4. 设置为 "Public"
 
 ## 技术栈
 

@@ -79,7 +79,8 @@
                 const data = await response.json();
                 
                 if (data.authRequired && !data.authenticated) {
-                    showLoginModal();
+                    // Redirect to login page
+                    window.location.href = '/login';
                     return false;
                 }
                 
@@ -88,65 +89,6 @@
             } catch (error) {
                 console.error('Auth check error:', error);
                 return false;
-            }
-        }
-
-        function showLoginModal() {
-            const modal = document.createElement('div');
-            modal.className = 'modal';
-            modal.style.display = 'block';
-            modal.innerHTML = `
-                <div class="modal-content">
-                    <h2 style="margin-bottom: 15px;">🔐 登录验证</h2>
-                    <input type="password" id="loginPassword" placeholder="请输入管理密码" 
-                           style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 15px;">
-                    <div style="display: flex; gap: 10px;">
-                        <button class="btn btn-success" onclick="login()">登录</button>
-                    </div>
-                    <div id="loginError" style="color: #f56565; margin-top: 10px; display: none;"></div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-            
-            document.getElementById('loginPassword').addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') login();
-            });
-        }
-
-        async function login() {
-            const password = document.getElementById('loginPassword').value;
-            const errorDiv = document.getElementById('loginError');
-            
-            try {
-                const response = await fetch('/api/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    isAuthenticated = true;
-                    document.querySelector('.modal').remove();
-                    loadAccounts();
-                } else {
-                    errorDiv.textContent = '密码错误，请重试';
-                    errorDiv.style.display = 'block';
-                }
-            } catch (error) {
-                errorDiv.textContent = '登录失败: ' + error.message;
-                errorDiv.style.display = 'block';
-            }
-        }
-
-        async function logout() {
-            try {
-                await fetch('/api/auth/logout', { method: 'POST' });
-                isAuthenticated = false;
-                location.reload();
-            } catch (error) {
-                console.error('Logout error:', error);
             }
         }
 
@@ -160,6 +102,18 @@
                 loadStats();
             } catch (error) {
                 console.error('Error loading accounts:', error);
+            }
+        }
+
+        async function logout() {
+            if (!confirm('确定要退出登录吗？')) return;
+            
+            try {
+                await fetch('/api/auth/logout', { method: 'POST' });
+                isAuthenticated = false;
+                window.location.href = '/login';
+            } catch (error) {
+                console.error('Logout error:', error);
             }
         }
 

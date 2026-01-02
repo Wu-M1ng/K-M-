@@ -104,7 +104,15 @@ def require_auth(f):
 @app.route('/')
 def index():
     """Serve the main page"""
+    # Check if authentication is required
+    if ADMIN_PASSWORD and not session.get('authenticated'):
+        return send_from_directory('static', 'login.html')
     return send_from_directory('static', 'index.html')
+
+@app.route('/login')
+def login_page():
+    """Serve the login page"""
+    return send_from_directory('static', 'login.html')
 
 @app.route('/api/auth/check', methods=['GET'])
 def check_auth():
