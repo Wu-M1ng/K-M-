@@ -8,10 +8,17 @@ import time
 import uuid
 import hashlib
 import requests
-import cbor2
 from datetime import datetime, timedelta
 import logging
 from functools import wraps
+
+# Optional CBOR support for Kiro API
+try:
+    import cbor2
+    CBOR_AVAILABLE = True
+except ImportError:
+    CBOR_AVAILABLE = False
+    logging.warning("cbor2 not installed, usage fetching will be disabled")
 
 app = Flask(__name__, static_folder='static')
 
@@ -59,18 +66,57 @@ scheduler_jobs = {}
 
 # ==================== Helper Functions ====================
 
-def load_accounts():
-    """Load accounts from JSON file"""
-    if os.path.exists(ACCOUNTS_FILE):
-        with open(ACCOUNTS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
+def get_empty_accounts():
+    """Return empty accounts structure"""
     return {"version": "1.3.1", "exportedAt": int(time.time() * 1000), "accounts": [], "groups": [], "tags": []}
 
+def load_accounts():
+    """Load accounts from JSON file with error handling"""
+    if os.path.exists(ACCOUNTS_FILE):
+        try:
+            with open(ACCOUNTS_FILE, 'r', encoding='utf-8') as f:
+                content = f.read()
+                if not content.strip():
+                    logger.warning(f"Accounts file is empty, returning default")
+                    return get_empty_accounts()
+                return json.loads(content)
+        except json.JSONDecodeError as e:
+            logger.error(f"Corrupted accounts file: {e}")
+            # Backup corrupted file
+            backup_file = f"{ACCOUNTS_FILE}.corrupted.{int(time.time())}"
+            try:
+                os.rename(ACCOUNTS_FILE, backup_file)
+                logger.info(f"Corrupted file backed up to {backup_file}")
+            except:
+                pass
+            return get_empty_accounts()
+        except Exception as e:
+            logger.error(f"Error loading accounts: {e}")
+            return get_empty_accounts()
+    return get_empty_accounts()
+
 def save_accounts(data):
-    """Save accounts to JSON file"""
+    """Save accounts to JSON file safely"""
     data['exportedAt'] = int(time.time() * 1000)
-    with open(ACCOUNTS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    # Write to temp file first, then rename (atomic operation)
+    temp_file = f"{ACCOUNTS_FILE}.tmp"
+    try:
+        with open(temp_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        # Atomic rename
+        if os.path.exists(ACCOUNTS_FILE):
+            os.replace(temp_file, ACCOUNTS_FILE)
+        else:
+            os.rename(temp_file, ACCOUNTS_FILE)
+    except Exception as e:
+        logger.error(f"Error saving accounts: {e}")
+        # Clean up temp file
+        if os.path.exists(temp_file):
+            try:
+                os.remove(temp_file)
+            except:
+                pass
+        raise
 
 def load_settings():
     """Load settings from JSON file"""
@@ -108,6 +154,9 @@ def generate_invocation_id():
 
 def kiro_api_request(operation, body, access_token, idp='BuilderId'):
     """Call Kiro API with CBOR format"""
+    if not CBOR_AVAILABLE:
+        return {'success': False, 'error': 'cbor2 not installed'}
+    
     try:
         url = f"{KIRO_API_BASE}/{operation}"
         headers = {
