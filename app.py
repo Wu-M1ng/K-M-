@@ -8,6 +8,7 @@ import time
 import uuid
 import hashlib
 import requests
+import cbor2
 from datetime import datetime, timedelta
 import logging
 from functools import wraps
@@ -98,6 +99,115 @@ def generate_machine_id():
 
 # Kiro Auth Service endpoint for social login (GitHub/Google)
 KIRO_AUTH_ENDPOINT = 'https://prod.us-east-1.auth.desktop.kiro.dev'
+# Kiro API endpoint for usage info
+KIRO_API_BASE = 'https://app.kiro.dev/service/KiroWebPortalService/operation'
+
+def generate_invocation_id():
+    """Generate a UUID for API invocation"""
+    return str(uuid.uuid4())
+
+def kiro_api_request(operation, body, access_token, idp='BuilderId'):
+    """Call Kiro API with CBOR format"""
+    try:
+        url = f"{KIRO_API_BASE}/{operation}"
+        headers = {
+            'accept': 'application/cbor',
+            'content-type': 'application/cbor',
+            'smithy-protocol': 'rpc-v2-cbor',
+            'amz-sdk-invocation-id': generate_invocation_id(),
+            'amz-sdk-request': 'attempt=1; max=1',
+            'x-amz-user-agent': 'aws-sdk-js/1.0.0 kiro-account-manager/1.0.0',
+            'authorization': f'Bearer {access_token}',
+            'cookie': f'Idp={idp}; AccessToken={access_token}'
+        }
+        
+        # Encode body as CBOR
+        cbor_body = cbor2.dumps(body)
+        
+        response = requests.post(url, data=cbor_body, headers=headers, timeout=30)
+        
+        if response.ok:
+            # Decode CBOR response
+            result = cbor2.loads(response.content)
+            return {'success': True, 'data': result}
+        else:
+            error_msg = f"HTTP {response.status_code}"
+            try:
+                error_data = cbor2.loads(response.content)
+                if error_data.get('message'):
+                    error_msg = error_data.get('message')
+            except:
+                pass
+            return {'success': False, 'error': error_msg}
+    except Exception as e:
+        logger.error(f"Kiro API error: {str(e)}")
+        return {'success': False, 'error': str(e)}
+
+def fetch_account_usage(access_token, idp='BuilderId'):
+    """Fetch account usage from Kiro API"""
+    result = kiro_api_request(
+        'GetUserUsageAndLimits',
+        {'isEmailRequired': True, 'origin': 'KIRO_IDE'},
+        access_token,
+        idp
+    )
+    
+    if not result['success']:
+        return None
+    
+    data = result['data']
+    usage_info = {}
+    
+    # Parse usageBreakdownList
+    usage_list = data.get('usageBreakdownList', [])
+    credit_usage = next((u for u in usage_list if u.get('resourceType') == 'CREDIT' or u.get('displayName') == 'Credits'), None)
+    
+    if credit_usage:
+        # Base usage
+        usage_info['limit'] = credit_usage.get('usageLimitWithPrecision') or credit_usage.get('usageLimit') or 0
+        usage_info['current'] = credit_usage.get('currentUsageWithPrecision') or credit_usage.get('currentUsage') or 0
+        
+        # Free trial info
+        free_trial = credit_usage.get('freeTrialInfo', {})
+        if free_trial.get('freeTrialStatus') == 'ACTIVE':
+            usage_info['freeTrialLimit'] = free_trial.get('usageLimitWithPrecision') or free_trial.get('usageLimit') or 0
+            usage_info['freeTrialCurrent'] = free_trial.get('currentUsageWithPrecision') or free_trial.get('currentUsage') or 0
+            usage_info['freeTrialExpiry'] = free_trial.get('freeTrialExpiry')
+        
+        # Bonuses
+        bonuses = credit_usage.get('bonuses', [])
+        if bonuses:
+            usage_info['bonuses'] = []
+            for bonus in bonuses:
+                if bonus.get('status') == 'ACTIVE':
+                    usage_info['bonuses'].append({
+                        'code': bonus.get('bonusCode', ''),
+                        'name': bonus.get('displayName', ''),
+                        'current': bonus.get('currentUsageWithPrecision') or bonus.get('currentUsage') or 0,
+                        'limit': bonus.get('usageLimitWithPrecision') or bonus.get('usageLimit') or 0,
+                        'expiresAt': bonus.get('expiresAt')
+                    })
+    
+    # Subscription info
+    sub_info = data.get('subscriptionInfo', {})
+    subscription = {
+        'type': sub_info.get('subscriptionTitle') or sub_info.get('type') or 'Unknown',
+        'upgradeCapability': sub_info.get('upgradeCapability'),
+        'overageCapability': sub_info.get('overageCapability')
+    }
+    
+    # Days until reset
+    if data.get('nextDateReset'):
+        try:
+            from datetime import datetime
+            reset_date = datetime.fromisoformat(data['nextDateReset'].replace('Z', '+00:00'))
+            days_remaining = (reset_date - datetime.now(reset_date.tzinfo)).days
+            subscription['daysRemaining'] = max(0, days_remaining)
+            usage_info['nextDateReset'] = data['nextDateReset']
+        except:
+            pass
+    
+    return {'usage': usage_info, 'subscription': subscription}
 
 def refresh_oidc_token(refresh_token_value, client_id, client_secret, region='us-east-1'):
     """Refresh token using AWS OIDC endpoint (for BuilderId/IdC login)"""
@@ -212,10 +322,34 @@ def refresh_token(account):
         return False, str(e)
 
 def update_account_usage(account):
-    """Update account usage information after token refresh"""
-    # This would typically call an API to get updated usage
-    # For now, just update the lastCheckedAt timestamp
-    account['lastCheckedAt'] = int(time.time() * 1000)
+    """Update account usage information by calling Kiro API"""
+    try:
+        credentials = account.get('credentials', {})
+        access_token = credentials.get('accessToken')
+        idp = account.get('idp', 'BuilderId')
+        
+        if not access_token:
+            logger.warning(f"No access token for {account.get('email')}, skipping usage update")
+            account['lastCheckedAt'] = int(time.time() * 1000)
+            return
+        
+        logger.info(f"Fetching usage for {account.get('email')}...")
+        result = fetch_account_usage(access_token, idp)
+        
+        if result:
+            # Update usage info
+            if result.get('usage'):
+                account['usage'] = result['usage']
+            if result.get('subscription'):
+                account['subscription'] = result['subscription']
+            logger.info(f"Usage updated for {account.get('email')}: {result.get('usage', {}).get('current', 0)}/{result.get('usage', {}).get('limit', 0)}")
+        else:
+            logger.warning(f"Failed to fetch usage for {account.get('email')}")
+        
+        account['lastCheckedAt'] = int(time.time() * 1000)
+    except Exception as e:
+        logger.error(f"Error updating usage for {account.get('email')}: {str(e)}")
+        account['lastCheckedAt'] = int(time.time() * 1000)
 
 def get_account_usage_percent(account):
     """Get account usage percentage"""
