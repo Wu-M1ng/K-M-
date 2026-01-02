@@ -96,46 +96,112 @@ def generate_machine_id():
     """Generate a unique machine ID"""
     return str(uuid.uuid4()).replace('-', '')[:32]
 
+# Kiro Auth Service endpoint for social login (GitHub/Google)
+KIRO_AUTH_ENDPOINT = 'https://prod.us-east-1.auth.desktop.kiro.dev'
+
+def refresh_oidc_token(refresh_token_value, client_id, client_secret, region='us-east-1'):
+    """Refresh token using AWS OIDC endpoint (for BuilderId/IdC login)"""
+    url = f"https://oidc.{region}.amazonaws.com/token"
+    
+    # AWS OIDC uses JSON format with camelCase field names
+    payload = {
+        'clientId': client_id,
+        'clientSecret': client_secret,
+        'refreshToken': refresh_token_value,
+        'grantType': 'refresh_token'
+    }
+    
+    headers = {'Content-Type': 'application/json'}
+    
+    response = requests.post(url, json=payload, headers=headers, timeout=30)
+    
+    if response.ok:
+        data = response.json()
+        return {
+            'success': True,
+            'accessToken': data.get('accessToken'),
+            'refreshToken': data.get('refreshToken') or refresh_token_value,
+            'expiresIn': data.get('expiresIn', 3600)
+        }
+    else:
+        error_text = response.text
+        try:
+            error_data = response.json()
+            error_text = error_data.get('error_description', error_data.get('error', error_text))
+        except:
+            pass
+        return {'success': False, 'error': f"HTTP {response.status_code}: {error_text}"}
+
+def refresh_social_token(refresh_token_value):
+    """Refresh token using Kiro Auth Service (for GitHub/Google social login)"""
+    url = f"{KIRO_AUTH_ENDPOINT}/refreshToken"
+    
+    headers = {
+        'Content-Type': 'application/json',
+        'User-Agent': 'kiro-account-manager/1.0.0'
+    }
+    
+    response = requests.post(url, json={'refreshToken': refresh_token_value}, headers=headers, timeout=30)
+    
+    if response.ok:
+        data = response.json()
+        return {
+            'success': True,
+            'accessToken': data.get('accessToken'),
+            'refreshToken': data.get('refreshToken') or refresh_token_value,
+            'expiresIn': data.get('expiresIn', 3600)
+        }
+    else:
+        error_text = response.text
+        try:
+            error_data = response.json()
+            error_text = error_data.get('error_description', error_data.get('error', error_text))
+        except:
+            pass
+        return {'success': False, 'error': f"HTTP {response.status_code}: {error_text}"}
+
 def refresh_token(account):
-    """Refresh access token for an account"""
+    """Refresh access token for an account - auto-detect auth method"""
     try:
         credentials = account.get('credentials', {})
         refresh_token_value = credentials.get('refreshToken')
         client_id = credentials.get('clientId')
+        client_secret = credentials.get('clientSecret')
         region = credentials.get('region', 'us-east-1')
+        auth_method = credentials.get('authMethod')
+        idp = account.get('idp', 'BuilderId')
         
         if not refresh_token_value:
             return False, "No refresh token available"
         
-        url = f"https://oidc.{region}.amazonaws.com/token"
-        headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-        data = {'grant_type': 'refresh_token', 'refresh_token': refresh_token_value}
+        # Determine auth method: social login (GitHub/Google) or IdC (BuilderId)
+        is_social = auth_method == 'social' or idp in ['Github', 'Google']
         
-        if client_id:
-            data['client_id'] = client_id
+        if is_social:
+            # Social login uses Kiro Auth Service
+            logger.info(f"Refreshing social token for {account.get('email')} (idp: {idp})")
+            result = refresh_social_token(refresh_token_value)
+        else:
+            # IdC/BuilderId uses AWS OIDC
+            if not client_id or not client_secret:
+                return False, "Missing OIDC credentials (clientId/clientSecret)"
+            logger.info(f"Refreshing OIDC token for {account.get('email')} (region: {region})")
+            result = refresh_oidc_token(refresh_token_value, client_id, client_secret, region)
         
-        response = requests.post(url, data=data, headers=headers, timeout=30)
-        
-        if response.status_code == 200:
-            token_data = response.json()
-            credentials['accessToken'] = token_data.get('access_token', credentials.get('accessToken'))
-            if token_data.get('refresh_token'):
-                credentials['refreshToken'] = token_data.get('refresh_token')
-            credentials['expiresAt'] = int(time.time() * 1000) + (token_data.get('expires_in', 3600) * 1000)
+        if result['success']:
+            credentials['accessToken'] = result['accessToken']
+            if result.get('refreshToken'):
+                credentials['refreshToken'] = result['refreshToken']
+            credentials['expiresAt'] = int(time.time() * 1000) + (result.get('expiresIn', 3600) * 1000)
             account['lastCheckedAt'] = int(time.time() * 1000)
             
             # Try to update usage info
             update_account_usage(account)
             
-            logger.info(f"Token refreshed for {account.get('email')}")
+            logger.info(f"Token refreshed successfully for {account.get('email')}")
             return True, "Token refreshed successfully"
         else:
-            error_msg = f"HTTP {response.status_code}"
-            try:
-                error_data = response.json()
-                error_msg = error_data.get('error_description', error_data.get('error', error_msg))
-            except:
-                pass
+            error_msg = result.get('error', 'Unknown error')
             logger.error(f"Failed to refresh token for {account.get('email')}: {error_msg}")
             return False, error_msg
             

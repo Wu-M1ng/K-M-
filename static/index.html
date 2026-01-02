@@ -15,6 +15,12 @@
         .stat-card h3 { font-size: 12px; opacity: 0.9; margin-bottom: 5px; }
         .stat-card .value { font-size: 24px; font-weight: bold; }
         .controls { background: white; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        .batch-controls { background: #fff3cd; padding: 10px 20px; border-radius: 8px; margin-bottom: 15px; display: none; align-items: center; gap: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .batch-controls.show { display: flex; }
+        .batch-controls .selected-count { font-weight: bold; color: #856404; }
+        .checkbox-wrapper { display: flex; align-items: center; gap: 8px; }
+        .checkbox-wrapper input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; accent-color: #667eea; }
+        .account-checkbox { position: absolute; top: 15px; left: 15px; }
         .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.3s; }
         .btn-primary { background: #667eea; color: white; }
         .btn-primary:hover { background: #5568d3; }
@@ -27,7 +33,7 @@
         .btn-warning { background: #ed8936; color: white; }
         .btn-warning:hover { background: #dd6b20; }
         .accounts-grid { display: grid; gap: 15px; }
-        .account-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: relative; }
+        .account-card { background: white; padding: 20px; padding-left: 45px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: relative; }
         .account-card.current { border: 2px solid #48bb78; }
         .current-badge { position: absolute; top: 10px; right: 10px; background: #48bb78; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
         .account-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
@@ -53,11 +59,22 @@
             <div class="stats" id="stats"></div>
         </div>
         <div class="controls">
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
+                <label for="selectAll" style="font-size: 13px; cursor: pointer;">全选</label>
+            </div>
             <button class="btn btn-primary" onclick="showImportModal()">📥 导入</button>
             <button class="btn btn-success" onclick="triggerRefresh()">🔄 刷新所有</button>
             <button class="btn btn-primary" onclick="exportAccounts()">📤 导出</button>
             <button class="btn btn-warning" onclick="showSettingsModal()">⚙️ 设置</button>
             <button class="btn btn-danger" onclick="logout()" style="margin-left: auto;">🚪 退出</button>
+        </div>
+        <div class="batch-controls" id="batchControls">
+            <span class="selected-count">已选择 <span id="selectedCount">0</span> 个账号</span>
+            <button class="btn btn-success" onclick="batchRefresh()">🔄 批量刷新</button>
+            <button class="btn btn-primary" onclick="batchExport()">📤 批量导出</button>
+            <button class="btn btn-danger" onclick="batchDelete()">🗑️ 批量删除</button>
+            <button class="btn" onclick="clearSelection()">取消选择</button>
         </div>
         <div class="accounts-grid" id="accounts"></div>
     </div>
@@ -125,6 +142,7 @@
         let accounts = [];
         let currentAccountDetails = null;
         let currentSettings = null;
+        let selectedAccounts = new Set();
 
         // Initialize
         (async () => {
@@ -210,9 +228,11 @@
                 const progressClass = percentUsed > 90 ? 'high' : percentUsed > 70 ? 'medium' : 'low';
                 const currentClass = account.isCurrent ? 'current' : '';
                 const currentBadge = account.isCurrent ? '<span class="current-badge">当前使用</span>' : '';
+                const isChecked = selectedAccounts.has(account.id) ? 'checked' : '';
                 
                 return `
                     <div class="account-card ${currentClass}">
+                        <input type="checkbox" class="account-checkbox" data-id="${account.id}" ${isChecked} onchange="toggleAccountSelection('${account.id}')">
                         ${currentBadge}
                         <div class="account-header">
                             <div class="account-email">${account.email}</div>
@@ -242,6 +262,105 @@
                     </div>
                 `;
             }).join('');
+            updateBatchControls();
+        }
+
+        // Selection functions
+        function toggleAccountSelection(accountId) {
+            if (selectedAccounts.has(accountId)) {
+                selectedAccounts.delete(accountId);
+            } else {
+                selectedAccounts.add(accountId);
+            }
+            updateBatchControls();
+        }
+
+        function toggleSelectAll() {
+            const selectAllCheckbox = document.getElementById('selectAll');
+            if (selectAllCheckbox.checked) {
+                accounts.forEach(a => selectedAccounts.add(a.id));
+            } else {
+                selectedAccounts.clear();
+            }
+            renderAccounts();
+        }
+
+        function clearSelection() {
+            selectedAccounts.clear();
+            document.getElementById('selectAll').checked = false;
+            renderAccounts();
+        }
+
+        function updateBatchControls() {
+            const count = selectedAccounts.size;
+            document.getElementById('selectedCount').textContent = count;
+            document.getElementById('batchControls').classList.toggle('show', count > 0);
+            document.getElementById('selectAll').checked = count > 0 && count === accounts.length;
+        }
+
+        async function batchRefresh() {
+            if (selectedAccounts.size === 0) return;
+            if (!confirm(`确定要刷新选中的 ${selectedAccounts.size} 个账号的 Token 吗？`)) return;
+            
+            let success = 0, failed = 0;
+            for (const accountId of selectedAccounts) {
+                try {
+                    const response = await fetch(`/api/accounts/${accountId}/refresh`, {
+                        method: 'POST',
+                        credentials: 'same-origin'
+                    });
+                    const result = await response.json();
+                    if (result.success) success++;
+                    else failed++;
+                } catch (error) {
+                    failed++;
+                }
+            }
+            alert(`批量刷新完成：成功 ${success} 个，失败 ${failed} 个`);
+            loadAccounts();
+        }
+
+        async function batchDelete() {
+            if (selectedAccounts.size === 0) return;
+            if (!confirm(`确定要删除选中的 ${selectedAccounts.size} 个账号吗？此操作不可恢复！`)) return;
+            
+            let success = 0, failed = 0;
+            for (const accountId of selectedAccounts) {
+                try {
+                    const response = await fetch(`/api/accounts/${accountId}`, {
+                        method: 'DELETE',
+                        credentials: 'same-origin'
+                    });
+                    const result = await response.json();
+                    if (result.success) success++;
+                    else failed++;
+                } catch (error) {
+                    failed++;
+                }
+            }
+            selectedAccounts.clear();
+            alert(`批量删除完成：成功 ${success} 个，失败 ${failed} 个`);
+            loadAccounts();
+        }
+
+        async function batchExport() {
+            if (selectedAccounts.size === 0) return;
+            
+            const selectedData = {
+                version: "1.3.1",
+                exportedAt: Date.now(),
+                accounts: accounts.filter(a => selectedAccounts.has(a.id)),
+                groups: [],
+                tags: []
+            };
+            
+            const blob = new Blob([JSON.stringify(selectedData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `kiro-accounts-selected-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
         }
 
         // Settings functions
