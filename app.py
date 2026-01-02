@@ -20,6 +20,14 @@ except ImportError:
     CBOR_AVAILABLE = False
     logging.warning("cbor2 not installed, usage fetching will be disabled")
 
+# Optional Redis support for Upstash
+try:
+    import redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+    logging.warning("redis not installed, using file storage")
+
 app = Flask(__name__, static_folder='static')
 
 # Generate a stable secret key
@@ -40,6 +48,22 @@ logger = logging.getLogger(__name__)
 ACCOUNTS_FILE = os.getenv('ACCOUNTS_FILE', 'accounts.json')
 SETTINGS_FILE = os.getenv('SETTINGS_FILE', 'settings.json')
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', None)
+
+# Upstash Redis configuration
+UPSTASH_REDIS_URL = os.getenv('UPSTASH_REDIS_URL')  # e.g., redis://default:xxx@xxx.upstash.io:6379
+REDIS_ACCOUNTS_KEY = 'kiro:accounts'
+REDIS_SETTINGS_KEY = 'kiro:settings'
+
+# Initialize Redis client
+redis_client = None
+if REDIS_AVAILABLE and UPSTASH_REDIS_URL:
+    try:
+        redis_client = redis.from_url(UPSTASH_REDIS_URL, decode_responses=True)
+        redis_client.ping()
+        logger.info("✅ Connected to Upstash Redis")
+    except Exception as e:
+        logger.error(f"❌ Failed to connect to Upstash Redis: {e}")
+        redis_client = None
 
 # Default settings
 DEFAULT_SETTINGS = {
@@ -75,24 +99,36 @@ def get_empty_accounts():
     return {"version": "1.3.1", "exportedAt": int(time.time() * 1000), "accounts": [], "groups": [], "tags": []}
 
 def load_accounts():
-    """Load accounts from JSON file with error handling"""
+    """Load accounts from Redis or JSON file"""
+    # Try Redis first
+    if redis_client:
+        try:
+            data = redis_client.get(REDIS_ACCOUNTS_KEY)
+            if data:
+                return json.loads(data)
+            logger.info("No accounts in Redis, returning empty")
+            return get_empty_accounts()
+        except Exception as e:
+            logger.error(f"Redis read error: {e}, falling back to file")
+    
+    # Fallback to file
     if os.path.exists(ACCOUNTS_FILE):
         try:
             with open(ACCOUNTS_FILE, 'r', encoding='utf-8') as f:
                 content = f.read()
                 if not content.strip():
-                    logger.warning(f"Accounts file is empty, returning default")
                     return get_empty_accounts()
-                return json.loads(content)
+                data = json.loads(content)
+                # Migrate to Redis if available
+                if redis_client:
+                    try:
+                        redis_client.set(REDIS_ACCOUNTS_KEY, json.dumps(data, ensure_ascii=False))
+                        logger.info("Migrated accounts from file to Redis")
+                    except:
+                        pass
+                return data
         except json.JSONDecodeError as e:
             logger.error(f"Corrupted accounts file: {e}")
-            # Backup corrupted file
-            backup_file = f"{ACCOUNTS_FILE}.corrupted.{int(time.time())}"
-            try:
-                os.rename(ACCOUNTS_FILE, backup_file)
-                logger.info(f"Corrupted file backed up to {backup_file}")
-            except:
-                pass
             return get_empty_accounts()
         except Exception as e:
             logger.error(f"Error loading accounts: {e}")
@@ -100,21 +136,29 @@ def load_accounts():
     return get_empty_accounts()
 
 def save_accounts(data):
-    """Save accounts to JSON file safely"""
+    """Save accounts to Redis and/or JSON file"""
     data['exportedAt'] = int(time.time() * 1000)
-    # Write to temp file first, then rename (atomic operation)
+    
+    # Save to Redis if available
+    if redis_client:
+        try:
+            redis_client.set(REDIS_ACCOUNTS_KEY, json.dumps(data, ensure_ascii=False))
+            logger.debug("Accounts saved to Redis")
+            return  # Success, no need for file backup
+        except Exception as e:
+            logger.error(f"Redis write error: {e}, falling back to file")
+    
+    # Fallback to file
     temp_file = f"{ACCOUNTS_FILE}.tmp"
     try:
         with open(temp_file, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        # Atomic rename
         if os.path.exists(ACCOUNTS_FILE):
             os.replace(temp_file, ACCOUNTS_FILE)
         else:
             os.rename(temp_file, ACCOUNTS_FILE)
     except Exception as e:
         logger.error(f"Error saving accounts: {e}")
-        # Clean up temp file
         if os.path.exists(temp_file):
             try:
                 os.remove(temp_file)
@@ -123,23 +167,60 @@ def save_accounts(data):
         raise
 
 def load_settings():
-    """Load settings from JSON file"""
+    """Load settings from Redis or JSON file"""
+    # Try Redis first
+    if redis_client:
+        try:
+            data = redis_client.get(REDIS_SETTINGS_KEY)
+            if data:
+                saved = json.loads(data)
+                settings = DEFAULT_SETTINGS.copy()
+                for key in settings:
+                    if key in saved:
+                        if isinstance(settings[key], dict):
+                            settings[key].update(saved[key])
+                        else:
+                            settings[key] = saved[key]
+                return settings
+        except Exception as e:
+            logger.error(f"Redis read error: {e}, falling back to file")
+    
+    # Fallback to file
     if os.path.exists(SETTINGS_FILE):
-        with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
-            saved = json.load(f)
-            # Merge with defaults
-            settings = DEFAULT_SETTINGS.copy()
-            for key in settings:
-                if key in saved:
-                    if isinstance(settings[key], dict):
-                        settings[key].update(saved[key])
-                    else:
-                        settings[key] = saved[key]
-            return settings
+        try:
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                saved = json.load(f)
+                settings = DEFAULT_SETTINGS.copy()
+                for key in settings:
+                    if key in saved:
+                        if isinstance(settings[key], dict):
+                            settings[key].update(saved[key])
+                        else:
+                            settings[key] = saved[key]
+                # Migrate to Redis if available
+                if redis_client:
+                    try:
+                        redis_client.set(REDIS_SETTINGS_KEY, json.dumps(settings, ensure_ascii=False))
+                        logger.info("Migrated settings from file to Redis")
+                    except:
+                        pass
+                return settings
+        except:
+            pass
     return DEFAULT_SETTINGS.copy()
 
 def save_settings(settings):
-    """Save settings to JSON file"""
+    """Save settings to Redis and/or JSON file"""
+    # Save to Redis if available
+    if redis_client:
+        try:
+            redis_client.set(REDIS_SETTINGS_KEY, json.dumps(settings, ensure_ascii=False))
+            logger.debug("Settings saved to Redis")
+            return
+        except Exception as e:
+            logger.error(f"Redis write error: {e}, falling back to file")
+    
+    # Fallback to file
     with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
         json.dump(settings, f, indent=2, ensure_ascii=False)
 
