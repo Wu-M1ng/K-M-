@@ -5,14 +5,24 @@ import json
 import os
 import time
 import uuid
+import hashlib
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from functools import wraps
 
 app = Flask(__name__, static_folder='static')
-app.secret_key = os.getenv('SECRET_KEY', os.urandom(24).hex())
-CORS(app)
+
+# Generate a stable secret key based on ADMIN_PASSWORD or use a fixed default
+_secret_base = os.getenv('SECRET_KEY') or os.getenv('ADMIN_PASSWORD') or 'kiro-account-manager-default-key'
+app.secret_key = hashlib.sha256(_secret_base.encode()).hexdigest()
+
+# Session configuration
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
+
+CORS(app, supports_credentials=True)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -117,25 +127,33 @@ def login_page():
 @app.route('/api/auth/check', methods=['GET'])
 def check_auth():
     """Check if authentication is required and if user is authenticated"""
+    is_authenticated = session.get('authenticated', False)
+    logger.info(f"Auth check: authRequired={ADMIN_PASSWORD is not None}, authenticated={is_authenticated}")
     return jsonify({
         "authRequired": ADMIN_PASSWORD is not None,
-        "authenticated": session.get('authenticated', False)
+        "authenticated": is_authenticated
     })
 
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     """Login with password"""
     if not ADMIN_PASSWORD:
+        session['authenticated'] = True
+        session.permanent = True
         return jsonify({"success": True, "message": "No authentication required"})
     
     data = request.json
     password = data.get('password', '')
     
     if password == ADMIN_PASSWORD:
+        session.clear()
         session['authenticated'] = True
         session.permanent = True
+        session.modified = True
+        logger.info("User logged in successfully")
         return jsonify({"success": True, "message": "Login successful"})
     else:
+        logger.warning("Failed login attempt")
         return jsonify({"success": False, "error": "Invalid password"}), 401
 
 @app.route('/api/auth/logout', methods=['POST'])

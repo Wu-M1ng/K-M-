@@ -173,27 +173,29 @@
         const errorMessage = document.getElementById('errorMessage');
 
         // Check if already authenticated
-        checkAuth();
-
         async function checkAuth() {
             try {
-                const response = await fetch('/api/auth/check');
+                const response = await fetch('/api/auth/check', {
+                    credentials: 'same-origin'
+                });
                 const data = await response.json();
                 
                 if (!data.authRequired) {
                     // No authentication required, redirect to main page
-                    window.location.href = '/';
+                    window.location.replace('/');
                     return;
                 }
                 
                 if (data.authenticated) {
                     // Already authenticated, redirect to main page
-                    window.location.href = '/';
+                    window.location.replace('/');
                 }
             } catch (error) {
                 console.error('Auth check error:', error);
             }
         }
+        
+        checkAuth();
 
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -216,6 +218,7 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
+                    credentials: 'same-origin',
                     body: JSON.stringify({ password })
                 });
 
@@ -223,10 +226,9 @@
 
                 if (result.success) {
                     // Login successful, redirect to main page
-                    loginBtn.innerHTML = '✓ 登录成功';
-                    setTimeout(() => {
-                        window.location.href = '/';
-                    }, 500);
+                    loginBtn.innerHTML = '✓ 登录成功，正在跳转...';
+                    // Use replace to prevent back button returning to login
+                    window.location.replace('/');
                 } else {
                     // Login failed
                     showError(result.error || '密码错误，请重试');

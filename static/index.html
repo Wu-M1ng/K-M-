@@ -75,12 +75,14 @@
 
         async function checkAuth() {
             try {
-                const response = await fetch('/api/auth/check');
+                const response = await fetch('/api/auth/check', {
+                    credentials: 'same-origin'
+                });
                 const data = await response.json();
                 
                 if (data.authRequired && !data.authenticated) {
                     // Redirect to login page
-                    window.location.href = '/login';
+                    window.location.replace('/login');
                     return false;
                 }
                 
@@ -114,6 +116,46 @@
                 window.location.href = '/login';
             } catch (error) {
                 console.error('Logout error:', error);
+            }
+        }
+
+        function showImportModal() {
+            document.getElementById('importModal').style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('importModal').style.display = 'none';
+            document.getElementById('importJson').value = '';
+        }
+
+        async function importAccounts() {
+            try {
+                const json = document.getElementById('importJson').value;
+                
+                if (!json.trim()) {
+                    alert('请粘贴 JSON 数据');
+                    return;
+                }
+                
+                const data = JSON.parse(json);
+                
+                const response = await fetch('/api/accounts/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert(result.message);
+                    closeModal();
+                    loadAccounts();
+                } else {
+                    alert('导入失败: ' + result.error);
+                }
+            } catch (error) {
+                alert('导入失败: ' + error.message);
             }
         }
 
@@ -236,6 +278,152 @@
             } catch (error) {
                 alert('导入失败: ' + error.message);
             }
+        }
+
+        async function refreshToken(accountId) {
+            try {
+                const response = await fetch(`/api/accounts/${accountId}/refresh`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('Token 刷新成功');
+                    loadAccounts();
+                } else {
+                    alert('刷新失败: ' + result.error);
+                }
+            } catch (error) {
+                alert('刷新失败: ' + error.message);
+            }
+        }
+
+        async function regenerateMachineId(accountId) {
+            try {
+                const response = await fetch(`/api/accounts/${accountId}/machine-id`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('机器码已重新生成: ' + result.machineId);
+                    loadAccounts();
+                } else {
+                    alert('生成失败: ' + result.error);
+                }
+            } catch (error) {
+                alert('生成失败: ' + error.message);
+            }
+        }
+
+        async function deleteAccount(accountId) {
+            if (!confirm('确定要删除这个账号吗？')) return;
+            
+            try {
+                const response = await fetch(`/api/accounts/${accountId}`, {
+                    method: 'DELETE'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('账号已删除');
+                    loadAccounts();
+                } else {
+                    alert('删除失败: ' + result.error);
+                }
+            } catch (error) {
+                alert('删除失败: ' + error.message);
+            }
+        }
+
+        async function refreshAllTokens() {
+            if (!confirm('确定要刷新所有账号的 Token 吗？')) return;
+            
+            alert('开始刷新所有 Token，请稍候...');
+            
+            for (const account of accounts) {
+                await refreshToken(account.id);
+            }
+            
+            alert('所有 Token 刷新完成');
+            loadAccounts();
+        }
+
+        async function exportAccounts() {
+            try {
+                const response = await fetch('/api/export');
+                const data = await response.json();
+                
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `kiro-accounts-${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+            } catch (error) {
+                alert('导出失败: ' + error.message);
+            }
+        }
+
+        function renderAccounts() {
+            const container = document.getElementById('accounts');
+            
+            if (accounts.length === 0) {
+                container.innerHTML = '<div class="loading">暂无账号，请导入账号数据</div>';
+                return;
+            }
+
+            container.innerHTML = accounts.map(account => {
+                const usage = account.usage || {};
+                const percentUsed = ((usage.current / usage.limit) * 100).toFixed(1);
+                
+                return `
+                    <div class="account-card">
+                        <div class="account-header">
+                            <div class="account-email">${account.email}</div>
+                            <span class="account-status status-${account.status}">${account.status}</span>
+                        </div>
+                        
+                        <div class="account-details">
+                            <div class="detail-item">
+                                <span class="detail-label">Provider:</span> ${account.idp}
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Nickname:</span> ${account.nickname}
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Subscription:</span> ${account.subscription?.type || 'N/A'}
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Days Remaining:</span> ${account.subscription?.daysRemaining || 'N/A'}
+                            </div>
+                        </div>
+
+                        <div>
+                            <div style="display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 5px;">
+                                <span>额度使用</span>
+                                <span>${usage.current?.toFixed(2) || 0} / ${usage.limit || 0} (${percentUsed}%)</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${percentUsed}%"></div>
+                            </div>
+                        </div>
+
+                        <div class="machine-id">
+                            <strong>Machine ID:</strong> ${account.machineId || '未绑定'}
+                        </div>
+
+                        <div class="account-actions">
+                            <button class="btn btn-success" onclick="refreshToken('${account.id}')">🔄 刷新Token</button>
+                            <button class="btn btn-primary" onclick="regenerateMachineId('${account.id}')">🔑 重新生成机器码</button>
+                            <button class="btn btn-danger" onclick="deleteAccount('${account.id}')">🗑️ 删除</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
         }
 
         async function refreshToken(accountId) {
