@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  kiro-account-manager:
+    build: .
+    container_name: kiro-account-manager
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
+      - REFRESH_INTERVAL=${REFRESH_INTERVAL:-3600}
+      - ACCOUNTS_FILE=/app/data/accounts.json
+      - SECRET_KEY=${SECRET_KEY:-}
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
