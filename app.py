@@ -152,6 +152,19 @@ def generate_invocation_id():
     """Generate a UUID for API invocation"""
     return str(uuid.uuid4())
 
+def convert_to_json_serializable(obj):
+    """Convert CBOR decoded objects to JSON serializable types"""
+    if isinstance(obj, dict):
+        return {k: convert_to_json_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_to_json_serializable(item) for item in obj]
+    elif isinstance(obj, datetime):
+        return obj.isoformat()
+    elif isinstance(obj, bytes):
+        return obj.decode('utf-8', errors='replace')
+    else:
+        return obj
+
 def kiro_api_request(operation, body, access_token, idp='BuilderId'):
     """Call Kiro API with CBOR format"""
     if not CBOR_AVAILABLE:
@@ -176,8 +189,9 @@ def kiro_api_request(operation, body, access_token, idp='BuilderId'):
         response = requests.post(url, data=cbor_body, headers=headers, timeout=30)
         
         if response.ok:
-            # Decode CBOR response
+            # Decode CBOR response and convert to JSON serializable
             result = cbor2.loads(response.content)
+            result = convert_to_json_serializable(result)
             return {'success': True, 'data': result}
         else:
             error_msg = f"HTTP {response.status_code}"
