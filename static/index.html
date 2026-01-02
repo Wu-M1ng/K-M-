@@ -224,11 +224,25 @@
             }
             container.innerHTML = accounts.map(account => {
                 const usage = account.usage || {};
-                const percentUsed = usage.limit ? ((usage.current / usage.limit) * 100) : 0;
+                // 计算总额度 = 普通额度 + 试用额度
+                const totalLimit = (usage.limit || 0) + (usage.freeTrialLimit || 0);
+                const totalCurrent = (usage.current || 0) + (usage.freeTrialCurrent || 0);
+                const percentUsed = totalLimit ? ((totalCurrent / totalLimit) * 100) : 0;
                 const progressClass = percentUsed > 90 ? 'high' : percentUsed > 70 ? 'medium' : 'low';
                 const currentClass = account.isCurrent ? 'current' : '';
                 const currentBadge = account.isCurrent ? '<span class="current-badge">当前使用</span>' : '';
                 const isChecked = selectedAccounts.has(account.id) ? 'checked' : '';
+                
+                // 计算试用额度剩余天数
+                let daysRemaining = 'N/A';
+                if (usage.freeTrialExpiry) {
+                    const expiry = new Date(usage.freeTrialExpiry);
+                    const now = new Date();
+                    const days = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+                    daysRemaining = days > 0 ? days + ' 天' : '已过期';
+                } else if (account.subscription?.daysRemaining !== undefined) {
+                    daysRemaining = account.subscription.daysRemaining + ' 天';
+                }
                 
                 return `
                     <div class="account-card ${currentClass}">
@@ -242,14 +256,14 @@
                             <div class="detail-item"><span class="detail-label">Provider:</span> ${account.idp}</div>
                             <div class="detail-item"><span class="detail-label">Nickname:</span> ${account.nickname}</div>
                             <div class="detail-item"><span class="detail-label">订阅:</span> ${account.subscription?.type || 'N/A'}</div>
-                            <div class="detail-item"><span class="detail-label">剩余天数:</span> ${account.subscription?.daysRemaining || 'N/A'}</div>
+                            <div class="detail-item"><span class="detail-label">剩余天数:</span> ${daysRemaining}</div>
                         </div>
                         <div>
                             <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px;">
                                 <span>额度使用</span>
-                                <span>${usage.current?.toFixed(2) || 0} / ${usage.limit || 0} (${percentUsed.toFixed(1)}%)</span>
+                                <span>${totalCurrent.toFixed(2)} / ${totalLimit.toFixed(0)} (${percentUsed.toFixed(1)}%)</span>
                             </div>
-                            <div class="progress-bar"><div class="progress-fill ${progressClass}" style="width: ${percentUsed}%"></div></div>
+                            <div class="progress-bar"><div class="progress-fill ${progressClass}" style="width: ${Math.min(percentUsed, 100)}%"></div></div>
                         </div>
                         <div class="machine-id"><strong>Machine ID:</strong> ${account.machineId || '未绑定'}</div>
                         <div class="account-actions">
@@ -651,6 +665,19 @@
                 const usage = account.usage || {};
                 const subscription = account.subscription || {};
                 const formatDate = (ts) => ts ? new Date(ts).toLocaleString('zh-CN') : 'N/A';
+                
+                // 计算总额度
+                const totalLimit = (usage.limit || 0) + (usage.freeTrialLimit || 0);
+                const totalCurrent = (usage.current || 0) + (usage.freeTrialCurrent || 0);
+                
+                // 计算试用剩余天数
+                let trialDaysRemaining = 'N/A';
+                if (usage.freeTrialExpiry) {
+                    const expiry = new Date(usage.freeTrialExpiry);
+                    const now = new Date();
+                    const days = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+                    trialDaysRemaining = days > 0 ? days + ' 天' : '已过期';
+                }
 
                 document.getElementById('accountDetails').innerHTML = `
                     <div class="detail-section">
@@ -665,10 +692,11 @@
                     <div class="detail-section">
                         <h3>💳 订阅 & 使用</h3>
                         <div class="detail-row"><span class="label">订阅类型:</span><span class="value">${subscription.type || 'N/A'}</span></div>
-                        <div class="detail-row"><span class="label">剩余天数:</span><span class="value">${subscription.daysRemaining || 'N/A'}</span></div>
-                        <div class="detail-row"><span class="label">已用/总额:</span><span class="value">${usage.current?.toFixed(2) || 0} / ${usage.limit || 0}</span></div>
-                        <div class="detail-row"><span class="label">试用额度:</span><span class="value">${usage.freeTrialCurrent?.toFixed(2) || 0} / ${usage.freeTrialLimit || 0}</span></div>
-                        <div class="detail-row"><span class="label">试用到期:</span><span class="value">${usage.freeTrialExpiry || 'N/A'}</span></div>
+                        <div class="detail-row"><span class="label">总额度:</span><span class="value">${totalCurrent.toFixed(2)} / ${totalLimit.toFixed(0)}</span></div>
+                        <div class="detail-row"><span class="label">普通额度:</span><span class="value">${(usage.current || 0).toFixed(2)} / ${usage.limit || 0}</span></div>
+                        <div class="detail-row"><span class="label">试用额度:</span><span class="value">${(usage.freeTrialCurrent || 0).toFixed(2)} / ${usage.freeTrialLimit || 0}</span></div>
+                        <div class="detail-row"><span class="label">试用剩余:</span><span class="value">${trialDaysRemaining}</span></div>
+                        <div class="detail-row"><span class="label">试用到期:</span><span class="value">${usage.freeTrialExpiry ? formatDate(usage.freeTrialExpiry) : 'N/A'}</span></div>
                     </div>
                     <div class="detail-section">
                         <h3>🔑 凭证</h3>
