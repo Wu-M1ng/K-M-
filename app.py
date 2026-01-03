@@ -69,7 +69,7 @@ if REDIS_AVAILABLE and UPSTASH_REDIS_URL:
 DEFAULT_SETTINGS = {
     "autoRefresh": {
         "enabled": True,
-        "interval": 1800,  # seconds (30 minutes default)
+        "interval": 300,  # seconds (5 minutes default)
         "refreshBeforeExpiry": 300,  # refresh 5 minutes before expiry
         "minValidTime": 1800  # minimum token valid time: 30 minutes
     },
@@ -93,7 +93,13 @@ DEFAULT_SETTINGS = {
 }
 
 # Global scheduler
-scheduler = BackgroundScheduler()
+scheduler = BackgroundScheduler(
+    job_defaults={
+        'coalesce': True,  # 合并错过的执行
+        'max_instances': 1,  # 同一任务最多同时运行1个实例
+        'misfire_grace_time': 60  # 错过执行时间60秒内仍然执行
+    }
+)
 scheduler_jobs = {}
 
 # ==================== Helper Functions ====================
@@ -558,38 +564,43 @@ def should_refresh_account(account, settings):
 
 def auto_refresh_tokens_task():
     """Automatically refresh tokens for all accounts"""
-    logger.info("🔄 Starting automatic token refresh...")
-    data = load_accounts()
-    settings = load_settings()
-    
-    min_valid_time = settings['autoRefresh'].get('minValidTime', 1800)  # 30 minutes
-    current_time = int(time.time() * 1000)
-    
-    refreshed = 0
-    failed = 0
-    skipped = 0
-    
-    for account in data.get('accounts', []):
-        if account.get('status') != 'active':
-            continue
+    try:
+        logger.info("🔄 Starting automatic token refresh...")
+        data = load_accounts()
+        settings = load_settings()
         
-        # Check if this account needs refresh
-        if should_refresh_account(account, settings):
-            remaining = get_token_remaining_time(account)
-            logger.info(f"Account {account.get('email')} needs refresh (remaining: {remaining}s, min: {min_valid_time}s)")
-            success, msg = refresh_token(account)
-            if success:
-                refreshed += 1
-                # Update last refresh time for this account
-                account['lastRefreshedAt'] = current_time
-            else:
+        min_valid_time = settings['autoRefresh'].get('minValidTime', 1800)  # 30 minutes
+        current_time = int(time.time() * 1000)
+        
+        refreshed = 0
+        failed = 0
+        skipped = 0
+        
+        for account in data.get('accounts', []):
+            try:
+                # Refresh all accounts regardless of status
+                # Check if this account needs refresh
+                if should_refresh_account(account, settings):
+                    remaining = get_token_remaining_time(account)
+                    logger.info(f"Account {account.get('email')} needs refresh (remaining: {remaining}s, min: {min_valid_time}s)")
+                    success, msg = refresh_token(account)
+                    if success:
+                        refreshed += 1
+                        # Update last refresh time for this account
+                        account['lastRefreshedAt'] = current_time
+                    else:
+                        failed += 1
+                        logger.warning(f"Auto refresh failed for {account.get('email')}: {msg}")
+                else:
+                    skipped += 1
+            except Exception as e:
                 failed += 1
-                logger.warning(f"Auto refresh failed for {account.get('email')}: {msg}")
-        else:
-            skipped += 1
-    
-    save_accounts(data)
-    logger.info(f"✅ Token refresh completed: {refreshed} refreshed, {failed} failed, {skipped} skipped")
+                logger.error(f"Error refreshing account {account.get('email')}: {str(e)}")
+        
+        save_accounts(data)
+        logger.info(f"✅ Token refresh completed: {refreshed} refreshed, {failed} failed, {skipped} skipped")
+    except Exception as e:
+        logger.error(f"❌ Auto refresh task failed: {str(e)}")
 
 def auto_switch_account_task():
     """Check accounts and switch to one with lower usage if needed"""
@@ -696,7 +707,8 @@ def setup_scheduler():
             func=auto_refresh_tokens_task,
             trigger=IntervalTrigger(seconds=interval),
             id='auto_refresh',
-            replace_existing=True
+            replace_existing=True,
+            next_run_time=datetime.now() + timedelta(seconds=interval)
         )
         scheduler_jobs['auto_refresh'] = job
         logger.info(f"📅 Auto refresh scheduled every {interval} seconds")
@@ -708,7 +720,8 @@ def setup_scheduler():
             func=auto_switch_account_task,
             trigger=IntervalTrigger(seconds=interval),
             id='auto_switch',
-            replace_existing=True
+            replace_existing=True,
+            next_run_time=datetime.now() + timedelta(seconds=interval)
         )
         scheduler_jobs['auto_switch'] = job
         logger.info(f"📅 Auto switch check scheduled every {interval} seconds")
@@ -721,7 +734,8 @@ def setup_scheduler():
             func=auto_status_check_task,
             trigger=IntervalTrigger(seconds=interval),
             id='status_check',
-            replace_existing=True
+            replace_existing=True,
+            next_run_time=datetime.now() + timedelta(seconds=interval)
         )
         scheduler_jobs['status_check'] = job
         logger.info(f"📅 Status check scheduled every {interval} seconds")

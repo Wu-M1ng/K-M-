@@ -1243,10 +1243,15 @@
 
         async function triggerStatusCheck() {
             try {
+                closeModal('settingsModal');
                 const response = await fetch('/api/scheduler/trigger/status_check', { method: 'POST', credentials: 'same-origin' });
                 const result = await response.json();
-                showToast(result.message || '状态检查已触发', 'success');
-                loadAccounts();
+                if (result.success) {
+                    showToast(result.message || '状态检查已触发', 'success');
+                    loadAccounts();
+                } else {
+                    showToast('触发失败: ' + (result.error || '未知错误'), 'error');
+                }
             } catch (error) {
                 showToast('触发失败: ' + error.message, 'error');
             }
@@ -1255,9 +1260,15 @@
         async function triggerRefresh() {
             if (!confirm('确定要立即刷新所有账号的 Token 吗？')) return;
             try {
+                closeModal('settingsModal');
                 const response = await fetch('/api/scheduler/trigger/auto_refresh', { method: 'POST', credentials: 'same-origin' });
                 const result = await response.json();
-                showToast(result.message || '刷新任务已触发', 'success');
+                if (result.success) {
+                    showToast(result.message || '刷新任务已触发', 'success');
+                    loadAccounts();
+                } else {
+                    showToast('触发失败: ' + (result.error || '未知错误'), 'error');
+                }
                 loadAccounts();
             } catch (error) {
                 showToast('触发失败: ' + error.message, 'error');
