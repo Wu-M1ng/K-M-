@@ -457,8 +457,17 @@ def refresh_token(account):
             credentials['expiresAt'] = int(time.time() * 1000) + (result.get('expiresIn', 3600) * 1000)
             account['lastCheckedAt'] = int(time.time() * 1000)
             
+            # Update account status to active after successful refresh
+            if account.get('status') == 'expired':
+                account['status'] = 'active'
+                account['statusReason'] = None
+                logger.info(f"Account {account.get('email')} status restored to active")
+            
             # Try to update usage info
             update_account_usage(account)
+            
+            # Re-check status after usage update (might be exhausted)
+            check_account_status(account)
             
             logger.info(f"Token refreshed successfully for {account.get('email')}")
             return True, "Token refreshed successfully"
@@ -619,35 +628,33 @@ def auto_switch_account_task():
 def check_account_status(account):
     """Check and update account status based on various conditions"""
     old_status = account.get('status', 'active')
-    new_status = 'active'
+    new_status = 'active'  # Default to active, then check for issues
     status_reason = None
     
     credentials = account.get('credentials', {})
     usage = account.get('usage', {})
     
-    # Check 1: Token expired
-    expires_at = credentials.get('expiresAt', 0)
-    if expires_at and expires_at < int(time.time() * 1000):
-        new_status = 'expired'
-        status_reason = 'Token expired'
-    
-    # Check 2: No refresh token
+    # Check 1: No refresh token (highest priority - invalid)
     if not credentials.get('refreshToken'):
         new_status = 'invalid'
         status_reason = 'No refresh token'
-    
+    # Check 2: Token expired
+    elif credentials.get('expiresAt', 0) and credentials.get('expiresAt', 0) < int(time.time() * 1000):
+        new_status = 'expired'
+        status_reason = 'Token expired'
     # Check 3: Usage limit exceeded (total usage)
-    total_limit = (usage.get('limit', 0) or 0) + (usage.get('freeTrialLimit', 0) or 0)
-    total_current = (usage.get('current', 0) or 0) + (usage.get('freeTrialCurrent', 0) or 0)
-    if total_limit > 0 and total_current >= total_limit:
-        new_status = 'exhausted'
-        status_reason = 'Usage limit exceeded'
+    else:
+        total_limit = (usage.get('limit', 0) or 0) + (usage.get('freeTrialLimit', 0) or 0)
+        total_current = (usage.get('current', 0) or 0) + (usage.get('freeTrialCurrent', 0) or 0)
+        if total_limit > 0 and total_current >= total_limit:
+            new_status = 'exhausted'
+            status_reason = 'Usage limit exceeded'
     
     # Update status if changed
     if new_status != old_status:
         account['status'] = new_status
-        account['statusReason'] = status_reason
-        logger.info(f"Account {account.get('email')} status changed: {old_status} -> {new_status} ({status_reason})")
+        account['statusReason'] = status_reason if status_reason else None
+        logger.info(f"Account {account.get('email')} status changed: {old_status} -> {new_status} ({status_reason or 'recovered'})")
         return True
     
     return False

@@ -61,7 +61,6 @@
                     </div>
                     <span class="logo-subtitle">Account Manager</span>
                 </div>
-</header></div></body></html>
                 <div class="header-actions">
                     <button class="btn btn-glass" onclick="showSettingsModal()">
                         <span class="btn-icon">⚙️</span>
@@ -155,7 +154,7 @@
                 <button class="btn btn-success" onclick="saveSettings()">保存设置</button>
             </div>
         </div>
-    </div></div>
+    </div>
 
     <style>
         /* Header */
@@ -450,6 +449,7 @@
         .status-expired { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
         .status-exhausted { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
         .status-invalid { background: rgba(148, 163, 184, 0.15); color: var(--text-muted); }
+        .status-reason { font-size: 10px; color: var(--text-muted); display: block; margin-top: 4px; }
 
         /* Token Timer */
         .token-section {
@@ -950,6 +950,7 @@
                                 </div>
                             </div>
                             <span class="status-badge status-${account.status}">${account.status}</span>
+                            ${account.statusReason ? `<span class="status-reason">${account.statusReason}</span>` : ''}
                         </div>
                         
                         <div class="token-section">
@@ -988,6 +989,7 @@
                         <div class="card-actions">
                             <button class="btn btn-sm btn-glass" onclick="showAccountDetails('${account.id}')">详情</button>
                             <button class="btn btn-sm btn-success" onclick="refreshToken('${account.id}')">刷新</button>
+                            <button class="btn btn-sm btn-primary" onclick="regenerateMachineId('${account.id}')">机器码</button>
                             ${!account.isCurrent ? `<button class="btn btn-sm btn-warning" onclick="setCurrentAccount('${account.id}')">设为当前</button>` : ''}
                             <button class="btn btn-sm btn-danger" onclick="deleteAccount('${account.id}')">删除</button>
                         </div>
@@ -1352,6 +1354,22 @@
             }
         }
 
+        async function regenerateMachineId(accountId) {
+            if (!confirm('确定要重新生成机器码吗？这可能会影响已绑定的设备。')) return;
+            try {
+                const response = await fetch(`/api/accounts/${accountId}/machine-id`, { method: 'POST', credentials: 'same-origin' });
+                const result = await response.json();
+                if (result.success) {
+                    showToast('机器码已重新生成', 'success');
+                    loadAccounts();
+                } else {
+                    showToast('生成失败: ' + result.error, 'error');
+                }
+            } catch (error) {
+                showToast('生成失败: ' + error.message, 'error');
+            }
+        }
+
         async function exportAccounts() {
             try {
                 const response = await fetch('/api/export', { credentials: 'same-origin' });
@@ -1408,6 +1426,11 @@
                     </div>
                     <div class="detail-section">
                         <h3>⏱️ Token 状态</h3>
+                        <div class="detail-row">
+                            <span class="label">账号状态</span>
+                            <span class="value"><span class="status-badge status-${account.status}">${account.status}</span></span>
+                        </div>
+                        ${account.statusReason ? `<div class="detail-row"><span class="label">状态原因</span><span class="value">${account.statusReason}</span></div>` : ''}
                         <div class="detail-row">
                             <span class="label">剩余时间</span>
                             <span class="value"><span class="token-timer ${tokenClass}" style="font-size:16px;">${formatTokenTime(tokenRemaining)}</span></span>
