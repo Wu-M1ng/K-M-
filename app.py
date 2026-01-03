@@ -70,7 +70,8 @@ DEFAULT_SETTINGS = {
     "autoRefresh": {
         "enabled": True,
         "interval": 1800,  # seconds (30 minutes default)
-        "refreshBeforeExpiry": 300  # refresh 5 minutes before expiry
+        "refreshBeforeExpiry": 300,  # refresh 5 minutes before expiry
+        "minValidTime": 1800  # minimum token valid time: 30 minutes
     },
     "autoSwitch": {
         "enabled": False,
@@ -85,6 +86,9 @@ DEFAULT_SETTINGS = {
     "notifications": {
         "onRefreshFail": True,
         "onAutoSwitch": True
+    },
+    "perAccountRefresh": {
+        "enabled": True  # enable per-account independent refresh
     }
 }
 
@@ -522,36 +526,61 @@ def find_best_account():
 
 # ==================== Scheduled Tasks ====================
 
+def get_token_remaining_time(account):
+    """Get remaining time in seconds for account token"""
+    credentials = account.get('credentials', {})
+    expires_at = credentials.get('expiresAt', 0)
+    if not expires_at:
+        return 0
+    current_time = int(time.time() * 1000)
+    remaining_ms = expires_at - current_time
+    return max(0, remaining_ms // 1000)
+
+def should_refresh_account(account, settings):
+    """Check if account needs token refresh based on settings"""
+    min_valid_time = settings['autoRefresh'].get('minValidTime', 1800)  # 30 minutes default
+    refresh_before = settings['autoRefresh'].get('refreshBeforeExpiry', 300)
+    
+    remaining = get_token_remaining_time(account)
+    
+    # Refresh if remaining time is less than minValidTime or refreshBeforeExpiry
+    threshold = max(min_valid_time, refresh_before)
+    return remaining < threshold
+
 def auto_refresh_tokens_task():
     """Automatically refresh tokens for all accounts"""
     logger.info("🔄 Starting automatic token refresh...")
     data = load_accounts()
     settings = load_settings()
     
-    refresh_before = settings['autoRefresh'].get('refreshBeforeExpiry', 300) * 1000
+    min_valid_time = settings['autoRefresh'].get('minValidTime', 1800)  # 30 minutes
     current_time = int(time.time() * 1000)
     
     refreshed = 0
     failed = 0
+    skipped = 0
     
     for account in data.get('accounts', []):
         if account.get('status') != 'active':
             continue
-            
-        credentials = account.get('credentials', {})
-        expires_at = credentials.get('expiresAt', 0)
         
-        # Check if token is expired or will expire soon
-        if expires_at - current_time < refresh_before:
+        # Check if this account needs refresh
+        if should_refresh_account(account, settings):
+            remaining = get_token_remaining_time(account)
+            logger.info(f"Account {account.get('email')} needs refresh (remaining: {remaining}s, min: {min_valid_time}s)")
             success, msg = refresh_token(account)
             if success:
                 refreshed += 1
+                # Update last refresh time for this account
+                account['lastRefreshedAt'] = current_time
             else:
                 failed += 1
                 logger.warning(f"Auto refresh failed for {account.get('email')}: {msg}")
+        else:
+            skipped += 1
     
     save_accounts(data)
-    logger.info(f"✅ Token refresh completed: {refreshed} refreshed, {failed} failed")
+    logger.info(f"✅ Token refresh completed: {refreshed} refreshed, {failed} failed, {skipped} skipped")
 
 def auto_switch_account_task():
     """Check accounts and switch to one with lower usage if needed"""
@@ -865,10 +894,16 @@ def get_accounts():
     data = load_accounts()
     settings = load_settings()
     
-    # Add current account indicator
+    # Add current account indicator and token status
     current_id = settings['autoSwitch'].get('currentAccountId')
+    min_valid_time = settings['autoRefresh'].get('minValidTime', 1800)
+    
     for account in data.get('accounts', []):
         account['isCurrent'] = account.get('id') == current_id
+        # Add token remaining time for each account
+        account['tokenRemainingSeconds'] = get_token_remaining_time(account)
+        account['needsRefresh'] = should_refresh_account(account, settings)
+        account['minValidTime'] = min_valid_time
     
     return jsonify(data)
 
@@ -928,10 +963,16 @@ def delete_account(account_id):
 def refresh_account_token(account_id):
     try:
         data = load_accounts()
+        settings = load_settings()
         account = next((a for a in data['accounts'] if a.get('id') == account_id), None)
         if not account:
             return jsonify({"success": False, "error": "Account not found"}), 404
         success, message = refresh_token(account)
+        if success:
+            account['lastRefreshedAt'] = int(time.time() * 1000)
+            # Add token remaining time to response
+            account['tokenRemainingSeconds'] = get_token_remaining_time(account)
+            account['needsRefresh'] = should_refresh_account(account, settings)
         save_accounts(data)
         return jsonify({"success": success, "message": message, "account": account})
     except Exception as e:
@@ -945,7 +986,40 @@ def get_account_details(account_id):
         account = next((a for a in data['accounts'] if a.get('id') == account_id), None)
         if not account:
             return jsonify({"success": False, "error": "Account not found"}), 404
+        
+        # Add token remaining time
+        account['tokenRemainingSeconds'] = get_token_remaining_time(account)
+        
         return jsonify({"success": True, "account": account})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+@app.route('/api/accounts/<account_id>/token-status', methods=['GET'])
+@require_auth
+def get_account_token_status(account_id):
+    """Get token status for a specific account"""
+    try:
+        data = load_accounts()
+        settings = load_settings()
+        account = next((a for a in data['accounts'] if a.get('id') == account_id), None)
+        if not account:
+            return jsonify({"success": False, "error": "Account not found"}), 404
+        
+        credentials = account.get('credentials', {})
+        remaining = get_token_remaining_time(account)
+        expires_at = credentials.get('expiresAt', 0)
+        min_valid_time = settings['autoRefresh'].get('minValidTime', 1800)
+        
+        return jsonify({
+            "success": True,
+            "tokenStatus": {
+                "remainingSeconds": remaining,
+                "expiresAt": expires_at,
+                "needsRefresh": should_refresh_account(account, settings),
+                "minValidTime": min_valid_time,
+                "lastRefreshedAt": account.get('lastRefreshedAt')
+            }
+        })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
@@ -1012,6 +1086,7 @@ def get_stats():
         pass
     
     status_check = settings.get('statusCheck', {})
+    auto_refresh = settings.get('autoRefresh', {})
     
     stats = {
         "total": len(accounts),
@@ -1023,8 +1098,10 @@ def get_stats():
         "byProvider": {},
         "byStatus": {},
         "currentAccountId": settings['autoSwitch'].get('currentAccountId'),
-        "autoRefreshEnabled": settings['autoRefresh']['enabled'],
-        "autoRefreshInterval": settings['autoRefresh']['interval'],
+        "autoRefreshEnabled": auto_refresh.get('enabled', True),
+        "autoRefreshInterval": auto_refresh.get('interval', 1800),
+        "minValidTime": auto_refresh.get('minValidTime', 1800),
+        "refreshBeforeExpiry": auto_refresh.get('refreshBeforeExpiry', 300),
         "autoSwitchEnabled": settings['autoSwitch']['enabled'],
         "statusCheckEnabled": status_check.get('enabled', True),
         "statusCheckInterval": status_check.get('interval', 300),

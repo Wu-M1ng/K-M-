@@ -4,141 +4,780 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kiro Account Manager</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --primary: #6366f1;
+            --primary-light: #818cf8;
+            --primary-dark: #4f46e5;
+            --success: #10b981;
+            --success-light: #34d399;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --bg-dark: #0f0f23;
+            --bg-card: rgba(255, 255, 255, 0.03);
+            --bg-card-hover: rgba(255, 255, 255, 0.06);
+            --border: rgba(255, 255, 255, 0.08);
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+            --glass: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
-        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-        .header { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .header h1 { color: #333; margin-bottom: 10px; }
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-top: 15px; }
-        .stat-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px; border-radius: 8px; }
-        .stat-card h3 { font-size: 12px; opacity: 0.9; margin-bottom: 5px; }
-        .stat-card .value { font-size: 24px; font-weight: bold; }
-        .controls { background: white; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-        .batch-controls { background: #fff3cd; padding: 10px 20px; border-radius: 8px; margin-bottom: 15px; display: none; align-items: center; gap: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .batch-controls.show { display: flex; }
-        .batch-controls .selected-count { font-weight: bold; color: #856404; }
-        .checkbox-wrapper { display: flex; align-items: center; gap: 8px; }
-        .checkbox-wrapper input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; accent-color: #667eea; }
-        .account-checkbox { position: absolute; top: 15px; left: 15px; }
-        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.3s; }
-        .btn-primary { background: #667eea; color: white; }
-        .btn-primary:hover { background: #5568d3; }
-        .btn-success { background: #48bb78; color: white; }
-        .btn-success:hover { background: #38a169; }
-        .btn-danger { background: #f56565; color: white; }
-        .btn-danger:hover { background: #e53e3e; }
-        .btn-info { background: #4299e1; color: white; }
-        .btn-info:hover { background: #3182ce; }
-        .btn-warning { background: #ed8936; color: white; }
-        .btn-warning:hover { background: #dd6b20; }
-        .accounts-grid { display: grid; gap: 15px; }
-        .account-card { background: white; padding: 20px; padding-left: 45px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: relative; }
-        .account-card.current { border: 2px solid #48bb78; }
-        .current-badge { position: absolute; top: 10px; right: 10px; background: #48bb78; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
-        .account-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .account-email { font-weight: bold; color: #333; font-size: 16px; }
-        .account-status { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 500; }
-        .status-active { background: #c6f6d5; color: #22543d; }
-        .status-expired, .status-trial_expired { background: #fed7d7; color: #822727; }
-        .status-exhausted { background: #feebc8; color: #744210; }
-        .status-invalid { background: #e2e8f0; color: #4a5568; }
-        .account-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 15px; }
-        .detail-item { font-size: 13px; color: #666; }
-        .detail-label { font-weight: 500; color: #333; }
-        .progress-bar { background: #e2e8f0; height: 8px; border-radius: 4px; overflow: hidden; margin: 10px 0; }
-        .progress-fill { height: 100%; transition: width 0.3s; }
-        .progress-fill.low { background: linear-gradient(90deg, #48bb78, #38a169); }
-        .progress-fill.medium { background: linear-gradient(90deg, #ed8936, #dd6b20); }
-        .progress-fill.high { background: linear-gradient(90deg, #f56565, #e53e3e); }
-        .account-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-        .machine-id { font-family: monospace; background: #f7fafc; padding: 8px; border-radius: 4px; font-size: 11px; margin-top: 10px; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        /* Animated Background */
+        .bg-gradient {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: 
+                radial-gradient(ellipse at 20% 20%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, rgba(16, 185, 129, 0.1) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 50%, rgba(245, 158, 11, 0.05) 0%, transparent 50%);
+            z-index: -1;
+            animation: bgPulse 15s ease-in-out infinite;
+        }
+        @keyframes bgPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .container { max-width: 1600px; margin: 0 auto; padding: 30px; position: relative; }
 </style>
 </head>
 <body>
+    <div class="bg-gradient"></div>
     <div class="container">
-        <div class="header">
-            <h1>🚀 Kiro Account Manager</h1>
-            <div class="stats" id="stats"></div>
-        </div>
-        <div class="controls">
-            <div class="checkbox-wrapper">
-                <input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
-                <label for="selectAll" style="font-size: 13px; cursor: pointer;">全选</label>
+        <header class="header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <div class="logo">
+                        <span class="logo-icon">⚡</span>
+                        <span class="logo-text">Kiro</span>
+                    </div>
+                    <span class="logo-subtitle">Account Manager</span>
+                </div>
+</header></div></body></html>
+                <div class="header-actions">
+                    <button class="btn btn-glass" onclick="showSettingsModal()">
+                        <span class="btn-icon">⚙️</span>
+                        <span>设置</span>
+                    </button>
+                    <button class="btn btn-danger-outline" onclick="logout()">
+                        <span class="btn-icon">🚪</span>
+                        <span>退出</span>
+                    </button>
+                </div>
             </div>
-            <button class="btn btn-primary" onclick="showImportModal()">📥 导入</button>
-            <button class="btn btn-success" onclick="triggerRefresh()">🔄 刷新所有</button>
-            <button class="btn btn-primary" onclick="exportAccounts()">📤 导出</button>
-            <button class="btn btn-warning" onclick="showSettingsModal()">⚙️ 设置</button>
-            <button class="btn btn-danger" onclick="logout()" style="margin-left: auto;">🚪 退出</button>
+            <div class="stats-grid" id="stats"></div>
+        </header>
+
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <label class="checkbox-modern">
+                    <input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
+                    <span class="checkmark"></span>
+                    <span>全选</span>
+                </label>
+                <div class="batch-actions" id="batchControls">
+                    <span class="selected-badge"><span id="selectedCount">0</span> 已选</span>
+                    <button class="btn btn-sm btn-success" onclick="batchRefresh()">批量刷新</button>
+                    <button class="btn btn-sm btn-primary" onclick="batchExport()">批量导出</button>
+                    <button class="btn btn-sm btn-danger" onclick="batchDelete()">批量删除</button>
+                    <button class="btn btn-sm btn-ghost" onclick="clearSelection()">取消</button>
+                </div>
+            </div>
+            <div class="toolbar-right">
+                <button class="btn btn-primary" onclick="showImportModal()">
+                    <span class="btn-icon">📥</span>
+                    <span>导入账号</span>
+                </button>
+                <button class="btn btn-success" onclick="triggerRefresh()">
+                    <span class="btn-icon">🔄</span>
+                    <span>刷新全部</span>
+                </button>
+                <button class="btn btn-glass" onclick="exportAccounts()">
+                    <span class="btn-icon">📤</span>
+                    <span>导出</span>
+                </button>
+            </div>
         </div>
-        <div class="batch-controls" id="batchControls">
-            <span class="selected-count">已选择 <span id="selectedCount">0</span> 个账号</span>
-            <button class="btn btn-success" onclick="batchRefresh()">🔄 批量刷新</button>
-            <button class="btn btn-primary" onclick="batchExport()">📤 批量导出</button>
-            <button class="btn btn-danger" onclick="batchDelete()">🗑️ 批量删除</button>
-            <button class="btn" onclick="clearSelection()">取消选择</button>
-        </div>
-        <div class="accounts-grid" id="accounts"></div>
+
+        <div class="accounts-container" id="accounts"></div>
     </div>
 
     <!-- Import Modal -->
-    <div class="modal" id="importModal">
-        <div class="modal-content">
-            <h2 style="margin-bottom: 15px;">📥 导入账号</h2>
-            <textarea id="importJson" placeholder="粘贴 JSON 数据..."></textarea>
-            <div style="margin-top: 15px; display: flex; gap: 10px;">
-                <button class="btn btn-success" onclick="importAccounts()">导入</button>
-                <button class="btn" onclick="closeModal('importModal')">取消</button>
+    <div class="modal-overlay" id="importModal">
+        <div class="modal glass-card">
+            <div class="modal-header">
+                <h2>📥 导入账号</h2>
+                <button class="modal-close" onclick="closeModal('importModal')">×</button>
+            </div>
+            <div class="modal-body">
+                <textarea id="importJson" class="textarea-modern" placeholder="粘贴 JSON 数据..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closeModal('importModal')">取消</button>
+                <button class="btn btn-success" onclick="importAccounts()">确认导入</button>
             </div>
         </div>
     </div>
 
     <!-- Details Modal -->
-    <div class="modal" id="detailsModal">
-        <div class="modal-content" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
-            <h2 style="margin-bottom: 15px;">📋 账号详情</h2>
-            <div id="accountDetails"></div>
-            <div style="margin-top: 15px; display: flex; gap: 10px;">
+    <div class="modal-overlay" id="detailsModal">
+        <div class="modal glass-card modal-lg">
+            <div class="modal-header">
+                <h2>📋 账号详情</h2>
+                <button class="modal-close" onclick="closeModal('detailsModal')">×</button>
+            </div>
+            <div class="modal-body" id="accountDetails"></div>
+            <div class="modal-footer">
                 <button class="btn btn-primary" onclick="copyAccountDetails()">📋 复制JSON</button>
-                <button class="btn" onclick="closeModal('detailsModal')">关闭</button>
+                <button class="btn btn-ghost" onclick="closeModal('detailsModal')">关闭</button>
             </div>
         </div>
     </div>
 
     <!-- Settings Modal -->
-    <div class="modal" id="settingsModal">
-        <div class="modal-content" style="max-width: 500px;">
-            <h2 style="margin-bottom: 20px;">⚙️ 定时任务设置</h2>
-            <div id="settingsContent"></div>
-            <div style="margin-top: 20px; display: flex; gap: 10px;">
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal glass-card">
+            <div class="modal-header">
+                <h2>⚙️ 系统设置</h2>
+                <button class="modal-close" onclick="closeModal('settingsModal')">×</button>
+            </div>
+            <div class="modal-body" id="settingsContent"></div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closeModal('settingsModal')">取消</button>
                 <button class="btn btn-success" onclick="saveSettings()">保存设置</button>
-                <button class="btn" onclick="closeModal('settingsModal')">取消</button>
             </div>
         </div>
-    </div>
+    </div></div>
 
     <style>
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
-        .modal-content { background: white; max-width: 600px; margin: 50px auto; padding: 30px; border-radius: 8px; }
-        .modal-content textarea { width: 100%; height: 250px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 12px; }
-        .detail-section { background: #f7fafc; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
-        .detail-section h3 { font-size: 14px; color: #667eea; margin-bottom: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; }
-        .detail-row { display: flex; margin-bottom: 8px; font-size: 13px; align-items: flex-start; }
-        .detail-row .label { font-weight: 600; color: #333; min-width: 130px; flex-shrink: 0; }
-        .detail-row .value { color: #666; word-break: break-all; flex: 1; }
-        .token-value { font-family: monospace; font-size: 10px; background: #edf2f7; padding: 8px; border-radius: 4px; max-height: 60px; overflow-y: auto; word-break: break-all; margin-top: 5px; }
-        .copy-btn { font-size: 11px; padding: 2px 8px; cursor: pointer; background: #667eea; color: white; border: none; border-radius: 4px; }
-        .loading { text-align: center; padding: 40px; color: #666; }
-        .setting-group { margin-bottom: 20px; padding: 15px; background: #f7fafc; border-radius: 8px; }
-        .setting-group h3 { font-size: 14px; color: #333; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-        .setting-row { display: flex; align-items: center; margin-bottom: 10px; }
-        .setting-row label { flex: 1; font-size: 13px; color: #555; }
-        .setting-row input[type="number"] { width: 100px; padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; }
-        .setting-row input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
-        .setting-row select { padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; }
-        .setting-hint { font-size: 11px; color: #888; margin-top: 4px; }
-        .scheduler-status { font-size: 12px; color: #48bb78; margin-top: 10px; }
+        /* Header */
+        .header { margin-bottom: 30px; }
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+        .logo-section { display: flex; align-items: center; gap: 15px; }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary-light), var(--success-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .logo-icon {
+            font-size: 32px;
+            filter: drop-shadow(0 0 10px rgba(99, 102, 241, 0.5));
+        }
+        .logo-subtitle {
+            font-size: 14px;
+            color: var(--text-muted);
+            font-weight: 400;
+            padding-left: 15px;
+            border-left: 1px solid var(--border);
+        }
+        .header-actions { display: flex; gap: 12px; }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+        }
+        .stat-card {
+            background: var(--bg-card);
+            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        .stat-card:hover {
+            background: var(--bg-card-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary), var(--primary-light));
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .stat-card:hover::before { opacity: 1; }
+        .stat-card.accent-success::before { background: linear-gradient(90deg, var(--success), var(--success-light)); }
+        .stat-card.accent-warning::before { background: linear-gradient(90deg, var(--warning), #fbbf24); }
+        .stat-card.accent-danger::before { background: linear-gradient(90deg, var(--danger), #f87171); }
+        .stat-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+        .stat-value { font-size: 28px; font-weight: 700; color: var(--text); }
+        .stat-sub { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+
+        /* Toolbar */
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            background: var(--bg-card);
+            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            margin-bottom: 24px;
+        }
+        .toolbar-left, .toolbar-right { display: flex; align-items: center; gap: 12px; }
+        .batch-actions { display: none; align-items: center; gap: 10px; padding-left: 15px; border-left: 1px solid var(--border); }
+        .batch-actions.show { display: flex; }
+        .selected-badge {
+            background: var(--primary);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 18px;
+            border: none;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+        .btn-icon { font-size: 14px; }
+        .btn-sm { padding: 6px 12px; font-size: 12px; }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+        }
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+        }
+        .btn-success {
+            background: linear-gradient(135deg, var(--success), #059669);
+            color: white;
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+        }
+        .btn-success:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+        }
+        .btn-danger {
+            background: linear-gradient(135deg, var(--danger), #dc2626);
+            color: white;
+        }
+        .btn-warning {
+            background: linear-gradient(135deg, var(--warning), #d97706);
+            color: white;
+        }
+        .btn-glass {
+            background: var(--glass);
+            color: var(--text);
+            border: 1px solid var(--glass-border);
+        }
+        .btn-glass:hover { background: var(--bg-card-hover); }
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-muted);
+        }
+        .btn-ghost:hover { color: var(--text); background: var(--glass); }
+        .btn-danger-outline {
+            background: transparent;
+            color: var(--danger);
+            border: 1px solid var(--danger);
+        }
+        .btn-danger-outline:hover { background: var(--danger); color: white; }
+
+        /* Checkbox */
+        .checkbox-modern {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        .checkbox-modern input { display: none; }
+        .checkmark {
+            width: 18px;
+            height: 18px;
+            border: 2px solid var(--border);
+            border-radius: 5px;
+            position: relative;
+            transition: all 0.2s;
+        }
+        .checkbox-modern input:checked + .checkmark {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+        .checkbox-modern input:checked + .checkmark::after {
+            content: '✓';
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 11px;
+        }
+
+        /* Account Cards */
+        .accounts-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 20px;
+        }
+        .account-card {
+            background: var(--bg-card);
+            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 24px;
+            position: relative;
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        .account-card:hover {
+            background: var(--bg-card-hover);
+            transform: translateY(-4px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        .account-card.current {
+            border-color: var(--success);
+            box-shadow: 0 0 30px rgba(16, 185, 129, 0.15);
+        }
+        .account-card .card-checkbox {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+        }
+        .card-checkbox input { display: none; }
+        .card-checkbox .checkmark {
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .card-checkbox input:checked + .checkmark {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+        .card-checkbox input:checked + .checkmark::after {
+            content: '✓';
+            color: white;
+            font-size: 12px;
+        }
+        .current-badge {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: linear-gradient(135deg, var(--success), #059669);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-left: 35px;
+        }
+        .account-info h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 4px;
+        }
+        .account-meta {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .provider-badge {
+            background: var(--glass);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .status-active { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+        .status-expired { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+        .status-exhausted { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+        .status-invalid { background: rgba(148, 163, 184, 0.15); color: var(--text-muted); }
+
+        /* Token Timer */
+        .token-section {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .token-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .token-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .token-timer {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+        .token-timer.safe { color: var(--success); }
+        .token-timer.warning { color: var(--warning); }
+        .token-timer.danger { color: var(--danger); animation: pulse 1s infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .token-progress {
+            height: 4px;
+            background: var(--glass);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .token-progress-bar {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 1s linear;
+        }
+        .token-progress-bar.safe { background: linear-gradient(90deg, var(--success), var(--success-light)); }
+        .token-progress-bar.warning { background: linear-gradient(90deg, var(--warning), #fbbf24); }
+        .token-progress-bar.danger { background: linear-gradient(90deg, var(--danger), #f87171); }
+
+        /* Usage Section */
+        .usage-section { margin-bottom: 16px; }
+        .usage-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .usage-label { font-size: 12px; color: var(--text-muted); }
+        .usage-value { font-size: 13px; font-weight: 600; color: var(--text); }
+        .usage-bar {
+            height: 6px;
+            background: var(--glass);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .usage-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+        .usage-fill.low { background: linear-gradient(90deg, var(--success), var(--success-light)); }
+        .usage-fill.medium { background: linear-gradient(90deg, var(--warning), #fbbf24); }
+        .usage-fill.high { background: linear-gradient(90deg, var(--danger), #f87171); }
+
+        /* Info Grid */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .info-item {
+            background: var(--glass);
+            padding: 10px 12px;
+            border-radius: 8px;
+        }
+        .info-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .info-value { font-size: 13px; color: var(--text); margin-top: 2px; }
+
+        /* Machine ID */
+        .machine-id {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 10px;
+            color: var(--text-muted);
+            background: var(--glass);
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            word-break: break-all;
+        }
+
+        /* Card Actions */
+        .card-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .card-actions .btn { flex: 1; min-width: 80px; justify-content: center; }
+
+        /* Loading */
+        .loading-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--glass);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            -webkit-backdrop-filter: blur(8px);
+            backdrop-filter: blur(8px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            width: 100%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal-lg { max-width: 700px; }
+        .glass-card {
+            background: rgba(15, 15, 35, 0.95);
+            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 24px;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        .modal-header h2 { font-size: 18px; font-weight: 600; }
+        .modal-close {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: var(--glass);
+            color: var(--text-muted);
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            transition: all 0.2s;
+        }
+        .modal-close:hover { background: var(--danger); color: white; }
+        .modal-body { margin-bottom: 20px; }
+        .modal-footer { display: flex; justify-content: flex-end; gap: 12px; }
+
+        /* Form Elements */
+        .textarea-modern {
+            width: 100%;
+            height: 200px;
+            background: var(--glass);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            color: var(--text);
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 12px;
+            resize: vertical;
+        }
+        .textarea-modern:focus { outline: none; border-color: var(--primary); }
+        .textarea-modern::placeholder { color: var(--text-muted); }
+
+        /* Settings */
+        .setting-group {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .setting-group h3 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .setting-row:last-child { border-bottom: none; }
+        .setting-row label { font-size: 13px; color: var(--text-muted); }
+        .setting-row select, .setting-row input[type="number"] {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 12px;
+            color: var(--text);
+            font-size: 13px;
+        }
+        .setting-row select:focus, .setting-row input:focus { outline: none; border-color: var(--primary); }
+        .setting-hint { font-size: 11px; color: var(--text-muted); margin-top: 8px; padding-left: 4px; }
+        .scheduler-status {
+            margin-top: 12px;
+            padding: 10px;
+            background: rgba(16, 185, 129, 0.1);
+            border-radius: 8px;
+            font-size: 12px;
+            color: var(--success);
+        }
+
+        /* Toggle Switch */
+        .toggle {
+            position: relative;
+            width: 44px;
+            height: 24px;
+        }
+        .toggle input { display: none; }
+        .toggle-slider {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--glass);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            left: 3px;
+            bottom: 3px;
+            background: var(--text-muted);
+            border-radius: 50%;
+            transition: all 0.3s;
+        }
+        .toggle input:checked + .toggle-slider { background: var(--primary); }
+        .toggle input:checked + .toggle-slider::before { transform: translateX(20px); background: white; }
+
+        /* Detail Sections */
+        .detail-section {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .detail-section h3 {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--primary-light);
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 8px 0;
+            font-size: 13px;
+        }
+        .detail-row .label { color: var(--text-muted); min-width: 120px; }
+        .detail-row .value { color: var(--text); text-align: right; word-break: break-all; }
+        .token-display {
+            background: var(--bg-card);
+            padding: 10px;
+            border-radius: 8px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 10px;
+            color: var(--text-muted);
+            max-height: 60px;
+            overflow-y: auto;
+            word-break: break-all;
+            margin-top: 8px;
+        }
+        .copy-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .copy-btn:hover { background: var(--primary-dark); }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container { padding: 15px; }
+            .header-content { flex-direction: column; gap: 15px; align-items: flex-start; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .toolbar { flex-direction: column; gap: 15px; }
+            .toolbar-left, .toolbar-right { width: 100%; justify-content: center; flex-wrap: wrap; }
+            .accounts-container { grid-template-columns: 1fr; }
+            .info-grid { grid-template-columns: 1fr; }
+        }
     </style>
 
     <script>
@@ -146,13 +785,14 @@
         let currentAccountDetails = null;
         let currentSettings = null;
         let selectedAccounts = new Set();
+        let countdownInterval = null;
 
         // Initialize
         (async () => {
             if (await checkAuth()) {
                 loadAccounts();
                 loadSettings();
-                setInterval(loadAccounts, 60000); // Refresh every minute
+                setInterval(loadAccounts, 60000);
             }
         })();
 
@@ -194,28 +834,41 @@
                 const response = await fetch('/api/stats', { credentials: 'same-origin' });
                 const stats = await response.json();
                 
-                // 格式化下次刷新时间
                 let nextRefreshText = '';
                 if (stats.nextRefreshTime) {
                     const nextTime = new Date(stats.nextRefreshTime);
-                    nextRefreshText = `<br><span style="font-size:10px;">下次: ${nextTime.toLocaleTimeString('zh-CN')}</span>`;
+                    const now = new Date();
+                    const diffSeconds = Math.max(0, Math.floor((nextTime - now) / 1000));
+                    nextRefreshText = `下次刷新: ${formatCountdown(diffSeconds)}`;
                 }
                 
                 const refreshStatus = stats.autoRefreshEnabled ? 
-                    `<span style="color:#48bb78">✓ 刷新 (${formatInterval(stats.autoRefreshInterval)})</span>${nextRefreshText}` : 
-                    `<span style="color:#f56565">✗ 刷新关闭</span>`;
-                const switchStatus = stats.autoSwitchEnabled ? 
-                    `<span style="color:#48bb78">✓ 换号</span>` : '';
-                const statusCheckStatus = stats.statusCheckEnabled ?
-                    `<span style="color:#48bb78">✓ 检查 (${formatInterval(stats.statusCheckInterval)})</span>` : '';
+                    `<span style="color:var(--success)">● 已启用</span> ${formatInterval(stats.autoRefreshInterval)}` : 
+                    `<span style="color:var(--danger)">● 已关闭</span>`;
                 
                 document.getElementById('stats').innerHTML = `
-                    <div class="stat-card"><h3>总账号</h3><div class="value">${stats.total}</div></div>
-                    <div class="stat-card"><h3>活跃</h3><div class="value">${stats.active}</div></div>
-                    <div class="stat-card"><h3>总额度</h3><div class="value">${stats.totalCredits.toFixed(0)}</div></div>
-                    <div class="stat-card"><h3>已使用</h3><div class="value">${stats.usedCredits.toFixed(0)}</div></div>
-                    <div class="stat-card" style="background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);">
-                        <h3>定时任务</h3><div style="font-size:11px;">${refreshStatus}<br>${statusCheckStatus} ${switchStatus}</div>
+                    <div class="stat-card">
+                        <div class="stat-label">总账号</div>
+                        <div class="stat-value">${stats.total}</div>
+                    </div>
+                    <div class="stat-card accent-success">
+                        <div class="stat-label">活跃账号</div>
+                        <div class="stat-value">${stats.active}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">总额度</div>
+                        <div class="stat-value">${stats.totalCredits.toFixed(0)}</div>
+                        <div class="stat-sub">已用 ${stats.usedCredits.toFixed(0)}</div>
+                    </div>
+                    <div class="stat-card accent-warning">
+                        <div class="stat-label">Token 保护</div>
+                        <div class="stat-value">${formatInterval(stats.minValidTime || 1800)}</div>
+                        <div class="stat-sub">最小有效时间</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">自动刷新</div>
+                        <div class="stat-sub" style="margin-top:0">${refreshStatus}</div>
+                        <div class="stat-sub">${nextRefreshText}</div>
                     </div>
                 `;
             } catch (error) {
@@ -229,67 +882,146 @@
             return `${Math.floor(seconds/3600)}小时`;
         }
 
+        function formatCountdown(seconds) {
+            if (seconds <= 0) return '即将执行';
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = seconds % 60;
+            if (h > 0) return `${h}时${m}分`;
+            if (m > 0) return `${m}分${s}秒`;
+            return `${s}秒`;
+        }
+
+        function formatTokenTime(seconds) {
+            if (seconds <= 0) return '已过期';
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = seconds % 60;
+            if (h > 0) return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+            return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+        }
+
         function renderAccounts() {
             const container = document.getElementById('accounts');
             if (accounts.length === 0) {
-                container.innerHTML = '<div class="loading">暂无账号，请导入账号数据</div>';
+                container.innerHTML = `
+                    <div class="loading-state" style="grid-column: 1/-1;">
+                        <div style="font-size:48px;margin-bottom:20px;">📭</div>
+                        <div style="font-size:16px;margin-bottom:8px;">暂无账号</div>
+                        <div style="font-size:13px;">点击上方"导入账号"按钮添加账号</div>
+                    </div>`;
                 return;
             }
+            
             container.innerHTML = accounts.map(account => {
                 const usage = account.usage || {};
-                // 计算总额度 = 普通额度 + 试用额度
                 const totalLimit = (usage.limit || 0) + (usage.freeTrialLimit || 0);
                 const totalCurrent = (usage.current || 0) + (usage.freeTrialCurrent || 0);
                 const percentUsed = totalLimit ? ((totalCurrent / totalLimit) * 100) : 0;
-                const progressClass = percentUsed > 90 ? 'high' : percentUsed > 70 ? 'medium' : 'low';
-                const currentClass = account.isCurrent ? 'current' : '';
-                const currentBadge = account.isCurrent ? '<span class="current-badge">当前使用</span>' : '';
+                const usageClass = percentUsed > 90 ? 'high' : percentUsed > 70 ? 'medium' : 'low';
                 const isChecked = selectedAccounts.has(account.id) ? 'checked' : '';
                 
-                // 计算试用额度剩余天数
                 let daysRemaining = 'N/A';
                 if (usage.freeTrialExpiry) {
-                    const expiry = new Date(usage.freeTrialExpiry);
-                    const now = new Date();
-                    const days = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
-                    daysRemaining = days > 0 ? days + ' 天' : '已过期';
+                    const days = Math.ceil((new Date(usage.freeTrialExpiry) - new Date()) / (1000 * 60 * 60 * 24));
+                    daysRemaining = days > 0 ? `${days}天` : '已过期';
                 } else if (account.subscription?.daysRemaining !== undefined) {
-                    daysRemaining = account.subscription.daysRemaining + ' 天';
+                    daysRemaining = `${account.subscription.daysRemaining}天`;
                 }
                 
+                const tokenRemaining = account.tokenRemainingSeconds || 0;
+                const tokenClass = tokenRemaining <= 0 ? 'danger' : tokenRemaining < 300 ? 'danger' : tokenRemaining < 1800 ? 'warning' : 'safe';
+                const tokenPercent = Math.min(100, (tokenRemaining / 3600) * 100);
+                
                 return `
-                    <div class="account-card ${currentClass}">
-                        <input type="checkbox" class="account-checkbox" data-id="${account.id}" ${isChecked} onchange="toggleAccountSelection('${account.id}')">
-                        ${currentBadge}
-                        <div class="account-header">
-                            <div class="account-email">${account.email}</div>
-                            <span class="account-status status-${account.status}">${account.status}</span>
-                        </div>
-                        <div class="account-details">
-                            <div class="detail-item"><span class="detail-label">Provider:</span> ${account.idp}</div>
-                            <div class="detail-item"><span class="detail-label">Nickname:</span> ${account.nickname}</div>
-                            <div class="detail-item"><span class="detail-label">订阅:</span> ${account.subscription?.type || 'N/A'}</div>
-                            <div class="detail-item"><span class="detail-label">剩余天数:</span> ${daysRemaining}</div>
-                        </div>
-                        <div>
-                            <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px;">
-                                <span>额度使用</span>
-                                <span>${totalCurrent.toFixed(2)} / ${totalLimit.toFixed(0)} (${percentUsed.toFixed(1)}%)</span>
+                    <div class="account-card ${account.isCurrent ? 'current' : ''}">
+                        <label class="card-checkbox">
+                            <input type="checkbox" data-id="${account.id}" ${isChecked} onchange="toggleAccountSelection('${account.id}')">
+                            <span class="checkmark"></span>
+                        </label>
+                        ${account.isCurrent ? '<span class="current-badge">✓ 当前使用</span>' : ''}
+                        
+                        <div class="card-header">
+                            <div class="account-info">
+                                <h3>${account.email}</h3>
+                                <div class="account-meta">
+                                    <span class="provider-badge">${account.idp}</span>
+                                    <span>${account.nickname || ''}</span>
+                                </div>
                             </div>
-                            <div class="progress-bar"><div class="progress-fill ${progressClass}" style="width: ${Math.min(percentUsed, 100)}%"></div></div>
+                            <span class="status-badge status-${account.status}">${account.status}</span>
                         </div>
-                        <div class="machine-id"><strong>Machine ID:</strong> ${account.machineId || '未绑定'}</div>
-                        <div class="account-actions">
-                            <button class="btn btn-info" onclick="showAccountDetails('${account.id}')">📋 详情</button>
-                            <button class="btn btn-success" onclick="refreshToken('${account.id}')">🔄 刷新</button>
-                            ${!account.isCurrent ? `<button class="btn btn-warning" onclick="setCurrentAccount('${account.id}')">⭐ 设为当前</button>` : ''}
-                            <button class="btn btn-primary" onclick="regenerateMachineId('${account.id}')">🔑 机器码</button>
-                            <button class="btn btn-danger" onclick="deleteAccount('${account.id}')">🗑️</button>
+                        
+                        <div class="token-section">
+                            <div class="token-header">
+                                <span class="token-label">⏱️ Token 有效时间</span>
+                                <span class="token-timer ${tokenClass}" data-account-id="${account.id}" data-remaining="${tokenRemaining}">${formatTokenTime(tokenRemaining)}</span>
+                            </div>
+                            <div class="token-progress">
+                                <div class="token-progress-bar ${tokenClass}" style="width: ${tokenPercent}%"></div>
+                            </div>
                         </div>
-                    </div>
-                `;
+                        
+                        <div class="usage-section">
+                            <div class="usage-header">
+                                <span class="usage-label">额度使用</span>
+                                <span class="usage-value">${totalCurrent.toFixed(1)} / ${totalLimit.toFixed(0)} (${percentUsed.toFixed(1)}%)</span>
+                            </div>
+                            <div class="usage-bar">
+                                <div class="usage-fill ${usageClass}" style="width: ${Math.min(percentUsed, 100)}%"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <div class="info-label">订阅类型</div>
+                                <div class="info-value">${account.subscription?.type || 'N/A'}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">剩余天数</div>
+                                <div class="info-value">${daysRemaining}</div>
+                            </div>
+                        </div>
+                        
+                        <div class="machine-id">🔑 ${account.machineId || '未绑定机器码'}</div>
+                        
+                        <div class="card-actions">
+                            <button class="btn btn-sm btn-glass" onclick="showAccountDetails('${account.id}')">详情</button>
+                            <button class="btn btn-sm btn-success" onclick="refreshToken('${account.id}')">刷新</button>
+                            ${!account.isCurrent ? `<button class="btn btn-sm btn-warning" onclick="setCurrentAccount('${account.id}')">设为当前</button>` : ''}
+                            <button class="btn btn-sm btn-danger" onclick="deleteAccount('${account.id}')">删除</button>
+                        </div>
+                    </div>`;
             }).join('');
+            
             updateBatchControls();
+            startTokenCountdown();
+        }
+
+        function startTokenCountdown() {
+            if (countdownInterval) clearInterval(countdownInterval);
+            countdownInterval = setInterval(() => {
+                document.querySelectorAll('.token-timer[data-remaining]').forEach(el => {
+                    let remaining = parseInt(el.dataset.remaining) || 0;
+                    if (remaining > 0) {
+                        remaining--;
+                        el.dataset.remaining = remaining;
+                        el.textContent = formatTokenTime(remaining);
+                        
+                        const tokenClass = remaining <= 0 ? 'danger' : remaining < 300 ? 'danger' : remaining < 1800 ? 'warning' : 'safe';
+                        el.className = `token-timer ${tokenClass}`;
+                        
+                        const card = el.closest('.account-card');
+                        if (card) {
+                            const progressBar = card.querySelector('.token-progress-bar');
+                            if (progressBar) {
+                                progressBar.className = `token-progress-bar ${tokenClass}`;
+                                progressBar.style.width = `${Math.min(100, (remaining / 3600) * 100)}%`;
+                            }
+                        }
+                    }
+                });
+            }, 1000);
         }
 
         // Selection functions
@@ -332,16 +1064,10 @@
             let success = 0, failed = 0;
             for (const accountId of selectedAccounts) {
                 try {
-                    const response = await fetch(`/api/accounts/${accountId}/refresh`, {
-                        method: 'POST',
-                        credentials: 'same-origin'
-                    });
+                    const response = await fetch(`/api/accounts/${accountId}/refresh`, { method: 'POST', credentials: 'same-origin' });
                     const result = await response.json();
-                    if (result.success) success++;
-                    else failed++;
-                } catch (error) {
-                    failed++;
-                }
+                    if (result.success) success++; else failed++;
+                } catch { failed++; }
             }
             alert(`批量刷新完成：成功 ${success} 个，失败 ${failed} 个`);
             loadAccounts();
@@ -354,16 +1080,10 @@
             let success = 0, failed = 0;
             for (const accountId of selectedAccounts) {
                 try {
-                    const response = await fetch(`/api/accounts/${accountId}`, {
-                        method: 'DELETE',
-                        credentials: 'same-origin'
-                    });
+                    const response = await fetch(`/api/accounts/${accountId}`, { method: 'DELETE', credentials: 'same-origin' });
                     const result = await response.json();
-                    if (result.success) success++;
-                    else failed++;
-                } catch (error) {
-                    failed++;
-                }
+                    if (result.success) success++; else failed++;
+                } catch { failed++; }
             }
             selectedAccounts.clear();
             alert(`批量删除完成：成功 ${success} 个，失败 ${failed} 个`);
@@ -372,43 +1092,28 @@
 
         async function batchExport() {
             if (selectedAccounts.size === 0) return;
-            
             const selectedData = {
                 version: "1.3.1",
                 exportedAt: Date.now(),
                 accounts: accounts.filter(a => selectedAccounts.has(a.id)),
-                groups: [],
-                tags: []
+                groups: [], tags: []
             };
-            
-            const blob = new Blob([JSON.stringify(selectedData, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `kiro-accounts-selected-${new Date().toISOString().split('T')[0]}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
+            downloadJson(selectedData, `kiro-accounts-selected-${new Date().toISOString().split('T')[0]}.json`);
         }
 
-        // Settings functions
+        // Settings
         async function loadSettings() {
             try {
                 const response = await fetch('/api/settings', { credentials: 'same-origin' });
                 const data = await response.json();
-                if (data.success) {
-                    currentSettings = data.settings;
-                }
+                if (data.success) currentSettings = data.settings;
             } catch (error) {
                 console.error('Error loading settings:', error);
             }
         }
 
         function showSettingsModal() {
-            if (!currentSettings) {
-                alert('设置加载中，请稍后再试');
-                loadSettings();
-                return;
-            }
+            if (!currentSettings) { alert('设置加载中，请稍后再试'); loadSettings(); return; }
             
             const ar = currentSettings.autoRefresh;
             const as = currentSettings.autoSwitch;
@@ -416,10 +1121,12 @@
             const scheduler = currentSettings.scheduler || {};
             
             let nextRunInfo = '';
-            if (scheduler.jobs && scheduler.jobs.length > 0) {
+            if (scheduler.jobs?.length > 0) {
                 const refreshJob = scheduler.jobs.find(j => j.id === 'auto_refresh');
-                if (refreshJob && refreshJob.nextRun) {
-                    nextRunInfo = `<div class="scheduler-status">下次刷新: ${new Date(refreshJob.nextRun).toLocaleString('zh-CN')}</div>`;
+                if (refreshJob?.nextRun) {
+                    const nextTime = new Date(refreshJob.nextRun);
+                    const diffSeconds = Math.max(0, Math.floor((nextTime - new Date()) / 1000));
+                    nextRunInfo = `<div class="scheduler-status">⏰ 下次刷新: ${nextTime.toLocaleString('zh-CN')} (${formatCountdown(diffSeconds)}后)</div>`;
                 }
             }
             
@@ -428,26 +1135,28 @@
                     <h3>🔄 自动刷新 Token</h3>
                     <div class="setting-row">
                         <label>启用自动刷新</label>
-                        <input type="checkbox" id="autoRefreshEnabled" ${ar.enabled ? 'checked' : ''}>
+                        <label class="toggle"><input type="checkbox" id="autoRefreshEnabled" ${ar.enabled ? 'checked' : ''}><span class="toggle-slider"></span></label>
                     </div>
                     <div class="setting-row">
-                        <label>刷新间隔</label>
+                        <label>检查间隔</label>
                         <select id="refreshInterval">
+                            <option value="300" ${ar.interval == 300 ? 'selected' : ''}>5 分钟</option>
+                            <option value="600" ${ar.interval == 600 ? 'selected' : ''}>10 分钟</option>
                             <option value="900" ${ar.interval == 900 ? 'selected' : ''}>15 分钟</option>
                             <option value="1800" ${ar.interval == 1800 ? 'selected' : ''}>30 分钟</option>
                             <option value="3600" ${ar.interval == 3600 ? 'selected' : ''}>1 小时</option>
-                            <option value="7200" ${ar.interval == 7200 ? 'selected' : ''}>2 小时</option>
-                            <option value="14400" ${ar.interval == 14400 ? 'selected' : ''}>4 小时</option>
-                            <option value="21600" ${ar.interval == 21600 ? 'selected' : ''}>6 小时</option>
-                            <option value="43200" ${ar.interval == 43200 ? 'selected' : ''}>12 小时</option>
-                            <option value="86400" ${ar.interval == 86400 ? 'selected' : ''}>24 小时</option>
                         </select>
                     </div>
                     <div class="setting-row">
-                        <label>提前刷新时间（秒）</label>
-                        <input type="number" id="refreshBeforeExpiry" value="${ar.refreshBeforeExpiry || 300}" min="60" max="3600">
+                        <label>Token 最小有效时间</label>
+                        <select id="minValidTime">
+                            <option value="900" ${(ar.minValidTime || 1800) == 900 ? 'selected' : ''}>15 分钟</option>
+                            <option value="1800" ${(ar.minValidTime || 1800) == 1800 ? 'selected' : ''}>30 分钟</option>
+                            <option value="2700" ${(ar.minValidTime || 1800) == 2700 ? 'selected' : ''}>45 分钟</option>
+                            <option value="3600" ${(ar.minValidTime || 1800) == 3600 ? 'selected' : ''}>1 小时</option>
+                        </select>
                     </div>
-                    <div class="setting-hint">Token 过期前多少秒开始刷新</div>
+                    <div class="setting-hint">当 Token 剩余时间少于此值时自动刷新</div>
                     ${nextRunInfo}
                 </div>
                 
@@ -455,51 +1164,38 @@
                     <h3>🔍 状态检查</h3>
                     <div class="setting-row">
                         <label>启用状态检查</label>
-                        <input type="checkbox" id="statusCheckEnabled" ${sc.enabled ? 'checked' : ''}>
+                        <label class="toggle"><input type="checkbox" id="statusCheckEnabled" ${sc.enabled ? 'checked' : ''}><span class="toggle-slider"></span></label>
                     </div>
                     <div class="setting-row">
                         <label>检查间隔</label>
                         <select id="statusCheckInterval">
                             <option value="60" ${sc.interval == 60 ? 'selected' : ''}>1 分钟</option>
-                            <option value="180" ${sc.interval == 180 ? 'selected' : ''}>3 分钟</option>
                             <option value="300" ${sc.interval == 300 ? 'selected' : ''}>5 分钟</option>
                             <option value="600" ${sc.interval == 600 ? 'selected' : ''}>10 分钟</option>
-                            <option value="900" ${sc.interval == 900 ? 'selected' : ''}>15 分钟</option>
                             <option value="1800" ${sc.interval == 1800 ? 'selected' : ''}>30 分钟</option>
                         </select>
                     </div>
-                    <div class="setting-hint">检查账号状态（Token过期、额度耗尽等）</div>
                 </div>
                 
                 <div class="setting-group">
                     <h3>🔀 自动换号</h3>
                     <div class="setting-row">
                         <label>启用自动换号</label>
-                        <input type="checkbox" id="autoSwitchEnabled" ${as.enabled ? 'checked' : ''}>
-                    </div>
-                    <div class="setting-row">
-                        <label>检查间隔</label>
-                        <select id="switchCheckInterval">
-                            <option value="900" ${as.checkInterval == 900 ? 'selected' : ''}>15 分钟</option>
-                            <option value="1800" ${as.checkInterval == 1800 ? 'selected' : ''}>30 分钟</option>
-                            <option value="3600" ${as.checkInterval == 3600 ? 'selected' : ''}>1 小时</option>
-                            <option value="7200" ${as.checkInterval == 7200 ? 'selected' : ''}>2 小时</option>
-                        </select>
+                        <label class="toggle"><input type="checkbox" id="autoSwitchEnabled" ${as.enabled ? 'checked' : ''}><span class="toggle-slider"></span></label>
                     </div>
                     <div class="setting-row">
                         <label>切换阈值 (%)</label>
-                        <input type="number" id="switchThreshold" value="${as.switchThreshold || 90}" min="50" max="100">
+                        <input type="number" id="switchThreshold" value="${as.switchThreshold || 90}" min="50" max="100" style="width:80px">
                     </div>
-                    <div class="setting-hint">当前账号使用率超过此值时自动切换到使用率最低的账号</div>
+                    <div class="setting-hint">当前账号使用率超过此值时自动切换</div>
                 </div>
                 
-                <div style="margin-top: 15px;">
-                    <button class="btn btn-info" onclick="triggerRefresh()" style="margin-right: 10px;">立即刷新所有</button>
-                    <button class="btn btn-warning" onclick="triggerStatusCheck()">立即检查状态</button>
-                </div>
-            `;
+                <div style="display:flex;gap:10px;margin-top:16px;">
+                    <button class="btn btn-success" onclick="triggerRefresh()" style="flex:1">立即刷新所有</button>
+                    <button class="btn btn-glass" onclick="triggerStatusCheck()" style="flex:1">立即检查状态</button>
+                </div>`;
             
-            document.getElementById('settingsModal').style.display = 'block';
+            openModal('settingsModal');
         }
 
         async function saveSettings() {
@@ -508,7 +1204,8 @@
                     autoRefresh: {
                         enabled: document.getElementById('autoRefreshEnabled').checked,
                         interval: parseInt(document.getElementById('refreshInterval').value),
-                        refreshBeforeExpiry: parseInt(document.getElementById('refreshBeforeExpiry').value)
+                        minValidTime: parseInt(document.getElementById('minValidTime').value),
+                        refreshBeforeExpiry: 300
                     },
                     statusCheck: {
                         enabled: document.getElementById('statusCheckEnabled').checked,
@@ -516,7 +1213,6 @@
                     },
                     autoSwitch: {
                         enabled: document.getElementById('autoSwitchEnabled').checked,
-                        checkInterval: parseInt(document.getElementById('switchCheckInterval').value),
                         switchThreshold: parseInt(document.getElementById('switchThreshold').value)
                     }
                 };
@@ -531,93 +1227,73 @@
                 const result = await response.json();
                 if (result.success) {
                     currentSettings = result.settings;
-                    alert('设置已保存');
+                    showToast('设置已保存', 'success');
                     closeModal('settingsModal');
                     loadStats();
+                    loadAccounts();
                 } else {
-                    alert('保存失败: ' + result.error);
+                    showToast('保存失败: ' + result.error, 'error');
                 }
             } catch (error) {
-                alert('保存失败: ' + error.message);
+                showToast('保存失败: ' + error.message, 'error');
             }
         }
 
         async function triggerStatusCheck() {
             try {
-                const response = await fetch('/api/scheduler/trigger/status_check', {
-                    method: 'POST',
-                    credentials: 'same-origin'
-                });
+                const response = await fetch('/api/scheduler/trigger/status_check', { method: 'POST', credentials: 'same-origin' });
                 const result = await response.json();
-                alert(result.message || '状态检查已触发');
+                showToast(result.message || '状态检查已触发', 'success');
                 loadAccounts();
             } catch (error) {
-                alert('触发失败: ' + error.message);
+                showToast('触发失败: ' + error.message, 'error');
             }
         }
 
         async function triggerRefresh() {
             if (!confirm('确定要立即刷新所有账号的 Token 吗？')) return;
             try {
-                const response = await fetch('/api/scheduler/trigger/auto_refresh', {
-                    method: 'POST',
-                    credentials: 'same-origin'
-                });
+                const response = await fetch('/api/scheduler/trigger/auto_refresh', { method: 'POST', credentials: 'same-origin' });
                 const result = await response.json();
-                alert(result.message || '刷新任务已触发');
+                showToast(result.message || '刷新任务已触发', 'success');
                 loadAccounts();
             } catch (error) {
-                alert('触发失败: ' + error.message);
-            }
-        }
-
-        async function triggerSwitch() {
-            try {
-                const response = await fetch('/api/scheduler/trigger/auto_switch', {
-                    method: 'POST',
-                    credentials: 'same-origin'
-                });
-                const result = await response.json();
-                alert(result.message || '换号检查已触发');
-                loadAccounts();
-            } catch (error) {
-                alert('触发失败: ' + error.message);
+                showToast('触发失败: ' + error.message, 'error');
             }
         }
 
         async function setCurrentAccount(accountId) {
             try {
-                const response = await fetch(`/api/accounts/${accountId}/set-current`, {
-                    method: 'POST',
-                    credentials: 'same-origin'
-                });
+                const response = await fetch(`/api/accounts/${accountId}/set-current`, { method: 'POST', credentials: 'same-origin' });
                 const result = await response.json();
                 if (result.success) {
-                    alert(result.message);
+                    showToast(result.message, 'success');
                     loadAccounts();
                 } else {
-                    alert('设置失败: ' + result.error);
+                    showToast('设置失败: ' + result.error, 'error');
                 }
             } catch (error) {
-                alert('设置失败: ' + error.message);
+                showToast('设置失败: ' + error.message, 'error');
             }
         }
 
         // Modal functions
-        function showImportModal() {
-            document.getElementById('importModal').style.display = 'block';
+        function openModal(modalId) {
+            document.getElementById(modalId).classList.add('show');
         }
 
         function closeModal(modalId) {
-            document.getElementById(modalId).style.display = 'none';
+            document.getElementById(modalId).classList.remove('show');
             if (modalId === 'importModal') document.getElementById('importJson').value = '';
         }
+
+        function showImportModal() { openModal('importModal'); }
 
         // Account operations
         async function importAccounts() {
             try {
                 const json = document.getElementById('importJson').value;
-                if (!json.trim()) { alert('请粘贴 JSON 数据'); return; }
+                if (!json.trim()) { showToast('请粘贴 JSON 数据', 'warning'); return; }
                 const data = JSON.parse(json);
                 const response = await fetch('/api/accounts/import', {
                     method: 'POST',
@@ -627,65 +1303,52 @@
                 });
                 const result = await response.json();
                 if (result.success) {
-                    alert(result.message);
+                    showToast(result.message, 'success');
                     closeModal('importModal');
                     loadAccounts();
                 } else {
-                    alert('导入失败: ' + result.error);
+                    showToast('导入失败: ' + result.error, 'error');
                 }
             } catch (error) {
-                alert('导入失败: ' + error.message);
+                showToast('导入失败: ' + error.message, 'error');
             }
         }
 
         async function refreshToken(accountId) {
             try {
-                const response = await fetch(`/api/accounts/${accountId}/refresh`, {
-                    method: 'POST',
-                    credentials: 'same-origin'
-                });
-                const result = await response.json();
-                alert(result.success ? 'Token 刷新成功' : '刷新失败: ' + (result.message || result.error));
-                loadAccounts();
-            } catch (error) {
-                alert('刷新失败: ' + error.message);
-            }
-        }
-
-        async function regenerateMachineId(accountId) {
-            try {
-                const response = await fetch(`/api/accounts/${accountId}/machine-id`, {
-                    method: 'POST',
-                    credentials: 'same-origin'
-                });
+                const response = await fetch(`/api/accounts/${accountId}/refresh`, { method: 'POST', credentials: 'same-origin' });
                 const result = await response.json();
                 if (result.success) {
-                    alert('机器码已重新生成');
-                    loadAccounts();
+                    const account = accounts.find(a => a.id === accountId);
+                    if (account && result.account) {
+                        Object.assign(account, result.account);
+                        account.tokenRemainingSeconds = result.account.tokenRemainingSeconds || Math.floor((result.account.credentials?.expiresAt - Date.now()) / 1000);
+                        account.needsRefresh = false;
+                    }
+                    showToast('Token 刷新成功', 'success');
+                    renderAccounts();
                 } else {
-                    alert('生成失败: ' + result.error);
+                    showToast('刷新失败: ' + (result.message || result.error), 'error');
+                    loadAccounts();
                 }
             } catch (error) {
-                alert('生成失败: ' + error.message);
+                showToast('刷新失败: ' + error.message, 'error');
             }
         }
 
         async function deleteAccount(accountId) {
             if (!confirm('确定要删除这个账号吗？')) return;
             try {
-                const response = await fetch(`/api/accounts/${accountId}`, {
-                    method: 'DELETE',
-                    credentials: 'same-origin'
-                });
+                const response = await fetch(`/api/accounts/${accountId}`, { method: 'DELETE', credentials: 'same-origin' });
                 const result = await response.json();
                 if (result.success) {
-                    alert('账号已删除');
+                    showToast('账号已删除', 'success');
                     loadAccounts();
                 } else {
-                    alert('删除失败: ' + result.error);
+                    showToast('删除失败: ' + result.error, 'error');
                 }
             } catch (error) {
-                alert('删除失败: ' + error.message);
+                showToast('删除失败: ' + error.message, 'error');
             }
         }
 
@@ -693,23 +1356,28 @@
             try {
                 const response = await fetch('/api/export', { credentials: 'same-origin' });
                 const data = await response.json();
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `kiro-accounts-${new Date().toISOString().split('T')[0]}.json`;
-                a.click();
-                URL.revokeObjectURL(url);
+                downloadJson(data, `kiro-accounts-${new Date().toISOString().split('T')[0]}.json`);
+                showToast('导出成功', 'success');
             } catch (error) {
-                alert('导出失败: ' + error.message);
+                showToast('导出失败: ' + error.message, 'error');
             }
+        }
+
+        function downloadJson(data, filename) {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
         }
 
         async function showAccountDetails(accountId) {
             try {
                 const response = await fetch(`/api/accounts/${accountId}/details`, { credentials: 'same-origin' });
                 const result = await response.json();
-                if (!result.success) { alert('获取详情失败: ' + result.error); return; }
+                if (!result.success) { showToast('获取详情失败: ' + result.error, 'error'); return; }
                 
                 currentAccountDetails = result.account;
                 const account = result.account;
@@ -718,80 +1386,118 @@
                 const subscription = account.subscription || {};
                 const formatDate = (ts) => ts ? new Date(ts).toLocaleString('zh-CN') : 'N/A';
                 
-                // 计算总额度
                 const totalLimit = (usage.limit || 0) + (usage.freeTrialLimit || 0);
                 const totalCurrent = (usage.current || 0) + (usage.freeTrialCurrent || 0);
+                const tokenRemaining = account.tokenRemainingSeconds || 0;
+                const tokenClass = tokenRemaining <= 0 ? 'danger' : tokenRemaining < 300 ? 'danger' : tokenRemaining < 1800 ? 'warning' : 'safe';
                 
-                // 计算试用剩余天数
                 let trialDaysRemaining = 'N/A';
                 if (usage.freeTrialExpiry) {
-                    const expiry = new Date(usage.freeTrialExpiry);
-                    const now = new Date();
-                    const days = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+                    const days = Math.ceil((new Date(usage.freeTrialExpiry) - new Date()) / (1000 * 60 * 60 * 24));
                     trialDaysRemaining = days > 0 ? days + ' 天' : '已过期';
                 }
 
                 document.getElementById('accountDetails').innerHTML = `
                     <div class="detail-section">
                         <h3>📧 基本信息</h3>
-                        <div class="detail-row"><span class="label">ID:</span><span class="value">${account.id || 'N/A'}</span></div>
-                        <div class="detail-row"><span class="label">Email:</span><span class="value">${account.email}</span></div>
-                        <div class="detail-row"><span class="label">Nickname:</span><span class="value">${account.nickname}</span></div>
-                        <div class="detail-row"><span class="label">User ID:</span><span class="value">${account.userId || 'N/A'}</span></div>
-                        <div class="detail-row"><span class="label">Provider:</span><span class="value">${account.idp}</span></div>
-                        <div class="detail-row"><span class="label">Machine ID:</span><span class="value">${account.machineId || '未绑定'}</span></div>
+                        <div class="detail-row"><span class="label">ID</span><span class="value">${account.id || 'N/A'}</span></div>
+                        <div class="detail-row"><span class="label">Email</span><span class="value">${account.email}</span></div>
+                        <div class="detail-row"><span class="label">Nickname</span><span class="value">${account.nickname}</span></div>
+                        <div class="detail-row"><span class="label">Provider</span><span class="value">${account.idp}</span></div>
+                        <div class="detail-row"><span class="label">Machine ID</span><span class="value" style="font-family:monospace;font-size:11px;">${account.machineId || '未绑定'}</span></div>
                     </div>
                     <div class="detail-section">
-                        <h3>💳 订阅 & 使用</h3>
-                        <div class="detail-row"><span class="label">订阅类型:</span><span class="value">${subscription.type || 'N/A'}</span></div>
-                        <div class="detail-row"><span class="label">总额度:</span><span class="value">${totalCurrent.toFixed(2)} / ${totalLimit.toFixed(0)}</span></div>
-                        <div class="detail-row"><span class="label">普通额度:</span><span class="value">${(usage.current || 0).toFixed(2)} / ${usage.limit || 0}</span></div>
-                        <div class="detail-row"><span class="label">试用额度:</span><span class="value">${(usage.freeTrialCurrent || 0).toFixed(2)} / ${usage.freeTrialLimit || 0}</span></div>
-                        <div class="detail-row"><span class="label">试用剩余:</span><span class="value">${trialDaysRemaining}</span></div>
-                        <div class="detail-row"><span class="label">试用到期:</span><span class="value">${usage.freeTrialExpiry ? formatDate(usage.freeTrialExpiry) : 'N/A'}</span></div>
-                    </div>
-                    <div class="detail-section">
-                        <h3>🔑 凭证</h3>
-                        <div class="detail-row"><span class="label">Auth Method:</span><span class="value">${credentials.authMethod || 'N/A'}</span></div>
-                        <div class="detail-row"><span class="label">Token 过期:</span><span class="value">${formatDate(credentials.expiresAt)}</span></div>
-                        ${account.idp === 'BuilderId' ? `
-                        <div class="detail-row"><span class="label">AWS Region:</span><span class="value">${credentials.region || 'us-east-1'}</span></div>
-                        <div style="margin-top: 10px;">
-                            <div class="detail-row"><span class="label">Client ID:</span><button class="copy-btn" onclick="copyText('clientId')">复制</button></div>
-                            <div class="token-value" id="clientId">${credentials.clientId || 'N/A'}</div>
+                        <h3>⏱️ Token 状态</h3>
+                        <div class="detail-row">
+                            <span class="label">剩余时间</span>
+                            <span class="value"><span class="token-timer ${tokenClass}" style="font-size:16px;">${formatTokenTime(tokenRemaining)}</span></span>
                         </div>
-                        <div style="margin-top: 10px;">
-                            <div class="detail-row"><span class="label">Client Secret:</span><button class="copy-btn" onclick="copyText('clientSecret')">复制</button></div>
-                            <div class="token-value" id="clientSecret">${credentials.clientSecret || 'N/A'}</div>
+                        <div class="detail-row"><span class="label">过期时间</span><span class="value">${formatDate(credentials.expiresAt)}</span></div>
+                        <div class="detail-row"><span class="label">上次刷新</span><span class="value">${account.lastRefreshedAt ? formatDate(account.lastRefreshedAt) : 'N/A'}</span></div>
+                    </div>
+                    <div class="detail-section">
+                        <h3>💳 订阅 & 额度</h3>
+                        <div class="detail-row"><span class="label">订阅类型</span><span class="value">${subscription.type || 'N/A'}</span></div>
+                        <div class="detail-row"><span class="label">总额度</span><span class="value">${totalCurrent.toFixed(2)} / ${totalLimit.toFixed(0)}</span></div>
+                        <div class="detail-row"><span class="label">普通额度</span><span class="value">${(usage.current || 0).toFixed(2)} / ${usage.limit || 0}</span></div>
+                        <div class="detail-row"><span class="label">试用额度</span><span class="value">${(usage.freeTrialCurrent || 0).toFixed(2)} / ${usage.freeTrialLimit || 0}</span></div>
+                        <div class="detail-row"><span class="label">试用剩余</span><span class="value">${trialDaysRemaining}</span></div>
+                    </div>
+                    <div class="detail-section">
+                        <h3>🔑 凭证信息</h3>
+                        <div class="detail-row"><span class="label">Auth Method</span><span class="value">${credentials.authMethod || 'N/A'}</span></div>
+                        ${account.idp === 'BuilderId' ? `
+                        <div class="detail-row"><span class="label">AWS Region</span><span class="value">${credentials.region || 'us-east-1'}</span></div>
+                        <div style="margin-top:12px;">
+                            <div class="detail-row"><span class="label">Client ID</span><button class="copy-btn" onclick="copyText('clientId')">复制</button></div>
+                            <div class="token-display" id="clientId">${credentials.clientId || 'N/A'}</div>
+                        </div>
+                        <div style="margin-top:12px;">
+                            <div class="detail-row"><span class="label">Client Secret</span><button class="copy-btn" onclick="copyText('clientSecret')">复制</button></div>
+                            <div class="token-display" id="clientSecret">${credentials.clientSecret || 'N/A'}</div>
                         </div>
                         ` : ''}
-                        <div style="margin-top: 10px;">
-                            <div class="detail-row"><span class="label">Access Token:</span><button class="copy-btn" onclick="copyText('accessToken')">复制</button></div>
-                            <div class="token-value" id="accessToken">${credentials.accessToken || 'N/A'}</div>
+                        <div style="margin-top:12px;">
+                            <div class="detail-row"><span class="label">Access Token</span><button class="copy-btn" onclick="copyText('accessToken')">复制</button></div>
+                            <div class="token-display" id="accessToken">${credentials.accessToken || 'N/A'}</div>
                         </div>
-                        <div style="margin-top: 10px;">
-                            <div class="detail-row"><span class="label">Refresh Token:</span><button class="copy-btn" onclick="copyText('refreshToken')">复制</button></div>
-                            <div class="token-value" id="refreshToken">${credentials.refreshToken || 'N/A'}</div>
+                        <div style="margin-top:12px;">
+                            <div class="detail-row"><span class="label">Refresh Token</span><button class="copy-btn" onclick="copyText('refreshToken')">复制</button></div>
+                            <div class="token-display" id="refreshToken">${credentials.refreshToken || 'N/A'}</div>
                         </div>
-                    </div>
-                `;
-                document.getElementById('detailsModal').style.display = 'block';
+                    </div>`;
+                openModal('detailsModal');
             } catch (error) {
-                alert('获取详情失败: ' + error.message);
+                showToast('获取详情失败: ' + error.message, 'error');
             }
         }
 
         function copyText(elementId) {
             const text = document.getElementById(elementId).textContent;
-            navigator.clipboard.writeText(text).then(() => alert('已复制')).catch(() => alert('复制失败'));
+            navigator.clipboard.writeText(text).then(() => showToast('已复制', 'success')).catch(() => showToast('复制失败', 'error'));
         }
 
         function copyAccountDetails() {
             if (currentAccountDetails) {
                 navigator.clipboard.writeText(JSON.stringify(currentAccountDetails, null, 2))
-                    .then(() => alert('已复制')).catch(() => alert('复制失败'));
+                    .then(() => showToast('已复制', 'success')).catch(() => showToast('复制失败', 'error'));
             }
         }
+
+        // Toast notification
+        function showToast(message, type = 'info') {
+            const existing = document.querySelector('.toast');
+            if (existing) existing.remove();
+            
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.innerHTML = `<span>${type === 'success' ? '✓' : type === 'error' ? '✗' : 'ℹ'}</span> ${message}`;
+            toast.style.cssText = `
+                position: fixed;
+                bottom: 30px;
+                right: 30px;
+                padding: 14px 24px;
+                background: ${type === 'success' ? 'var(--success)' : type === 'error' ? 'var(--danger)' : 'var(--primary)'};
+                color: white;
+                border-radius: 10px;
+                font-size: 14px;
+                font-weight: 500;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+                z-index: 9999;
+                animation: slideIn 0.3s ease;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            `;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
     </script>
+    <style>
+        @keyframes slideIn {
+            from { transform: translateX(100px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
 </body>
 </html>
