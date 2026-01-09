@@ -1161,127 +1161,6 @@ def list_models():
 @app.route('/v1/chat/completions', methods=['POST'])
 @require_auth
 def chat_completions():
-    """Chat completions endpoint"""
-    try:
-        from kiro_chat import KiroChatClient
-        from flask import Response, stream_with_context
-        
-        data = request.json
-        messages = data.get('messages')
-        model = data.get('model')
-        stream = data.get('stream', False)
-        
-        if not messages or not model:
-            return jsonify({"error": "Missing messages or model"}), 400
-            
-        # Find best account
-        account = find_best_account()
-        if not account:
-            return jsonify({"error": "No available accounts"}), 503
-            
-        # Refresh token if needed
-        settings = load_settings()
-        if should_refresh_account(account, settings):
-            success, msg = refresh_token(account)
-            if not success:
-                logger.warning(f"Failed to refresh token for account {account.get('email')}: {msg}")
-                # Try to find another account? For now just fail or try anyway if token might still be valid
-        
-        client = KiroChatClient(None) # account_manager not needed for this simple usage
-        cw_request = client.convert_to_codewhisperer_request(messages, model)
-        
-        if stream:
-            def generate():
-                for chunk in client.stream_response(account, cw_request):
-                    if "error" in chunk:
-                        yield f"data: {json.dumps({'error': chunk['error']})}\n\n"
-                        break
-                    
-                    if "content" in chunk:
-                        yield f"data: {json.dumps({
-                            'id': f'chatcmpl-{int(time.time())}',
-                            'object': 'chat.completion.chunk',
-                            'created': int(time.time()),
-                            'model': model,
-                            'choices': [{
-                                'index': 0,
-                                'delta': {'content': chunk['content']},
-                                'finish_reason': None
-                            }]
-                        })}\n\n"
-                
-                yield f"data: {json.dumps({
-                    'id': f'chatcmpl-{int(time.time())}',
-                    'object': 'chat.completion.chunk',
-                    'created': int(time.time()),
-                    'model': model,
-                    'choices': [{
-                        'index': 0,
-                        'delta': {},
-                        'finish_reason': 'stop'
-                    }]
-                })}\n\n"
-                yield "data: [DONE]\n\n"
-
-            return Response(stream_with_context(generate()), mimetype='text/event-stream')
-        else:
-            # Non-streaming response
-            content = ""
-            for chunk in client.stream_response(account, cw_request):
-                if "error" in chunk:
-                    return jsonify({"error": chunk['error']}), 500
-                if "content" in chunk:
-                    content += chunk['content']
-            
-            return jsonify({
-                "id": f"chatcmpl-{int(time.time())}",
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": model,
-                "choices": [{
-                    "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": content
-                    },
-                    "finish_reason": "stop"
-                }],
-                "usage": {
-                    "prompt_tokens": 0, # Not calculated
-                    "completion_tokens": 0, # Not calculated
-                    "total_tokens": 0
-                }
-            })
-
-    except Exception as e:
-        logger.error(f"Chat completion error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route('/v1/models', methods=['GET'])
-@require_auth
-def list_models():
-    """List available models"""
-    from kiro_chat import KIRO_MODEL_MAP
-    
-    models = []
-    for model_id in KIRO_MODEL_MAP.keys():
-        models.append({
-            "id": model_id,
-            "object": "model",
-            "created": int(time.time()),
-            "owned_by": "anthropic"
-        })
-    
-    return jsonify({
-        "object": "list",
-        "data": models
-    })
-
-@app.route('/v1/chat/completions', methods=['POST'])
-@require_auth
-def chat_completions():
-    """Chat completions endpoint"""
     try:
         from kiro_chat import KiroChatClient
         from flask import Response, stream_with_context
@@ -1315,7 +1194,7 @@ def chat_completions():
                         break
                     
                     if "content" in chunk:
-                        yield f"data: {json.dumps({
+                        chunk_data = {
                             'id': f'chatcmpl-{int(time.time())}',
                             'object': 'chat.completion.chunk',
                             'created': int(time.time()),
@@ -1325,9 +1204,10 @@ def chat_completions():
                                 'delta': {'content': chunk['content']},
                                 'finish_reason': None
                             }]
-                        })}\n\n"
+                        }
+                        yield f"data: {json.dumps(chunk_data)}\n\n"
                 
-                yield f"data: {json.dumps({
+                final_chunk = {
                     'id': f'chatcmpl-{int(time.time())}',
                     'object': 'chat.completion.chunk',
                     'created': int(time.time()),
@@ -1337,7 +1217,8 @@ def chat_completions():
                         'delta': {},
                         'finish_reason': 'stop'
                     }]
-                })}\n\n"
+                }
+                yield f"data: {json.dumps(final_chunk)}\n\n"
                 yield "data: [DONE]\n\n"
 
             return Response(stream_with_context(generate()), mimetype='text/event-stream')
@@ -1392,100 +1273,6 @@ def list_models():
         "object": "list",
         "data": models
     })
-
-@app.route('/v1/chat/completions', methods=['POST'])
-@require_auth
-def chat_completions():
-    try:
-        from kiro_chat import KiroChatClient
-        from flask import Response, stream_with_context
-        
-        data = request.json
-        messages = data.get('messages')
-        model = data.get('model')
-        stream = data.get('stream', False)
-        
-        if not messages or not model:
-            return jsonify({"error": "Missing messages or model"}), 400
-            
-        account = find_best_account()
-        if not account:
-            return jsonify({"error": "No available accounts"}), 503
-            
-        settings = load_settings()
-        if should_refresh_account(account, settings):
-            success, msg = refresh_token(account)
-            if not success:
-                logger.warning(f"Failed to refresh token for account {account.get('email')}: {msg}")
-        
-        client = KiroChatClient(None)
-        cw_request = client.convert_to_codewhisperer_request(messages, model)
-        
-        if stream:
-            def generate():
-                for chunk in client.stream_response(account, cw_request):
-                    if "error" in chunk:
-                        yield f"data: {json.dumps({'error': chunk['error']})}\n\n"
-                        break
-                    
-                    if "content" in chunk:
-                        yield f"data: {json.dumps({
-                            'id': f'chatcmpl-{int(time.time())}',
-                            'object': 'chat.completion.chunk',
-                            'created': int(time.time()),
-                            'model': model,
-                            'choices': [{
-                                'index': 0,
-                                'delta': {'content': chunk['content']},
-                                'finish_reason': None
-                            }]
-                        })}\n\n"
-                
-                yield f"data: {json.dumps({
-                    'id': f'chatcmpl-{int(time.time())}',
-                    'object': 'chat.completion.chunk',
-                    'created': int(time.time()),
-                    'model': model,
-                    'choices': [{
-                        'index': 0,
-                        'delta': {},
-                        'finish_reason': 'stop'
-                    }]
-                })}\n\n"
-                yield "data: [DONE]\n\n"
-
-            return Response(stream_with_context(generate()), mimetype='text/event-stream')
-        else:
-            content = ""
-            for chunk in client.stream_response(account, cw_request):
-                if "error" in chunk:
-                    return jsonify({"error": chunk['error']}), 500
-                if "content" in chunk:
-                    content += chunk['content']
-            
-            return jsonify({
-                "id": f"chatcmpl-{int(time.time())}",
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": model,
-                "choices": [{
-                    "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": content
-                    },
-                    "finish_reason": "stop"
-                }],
-                "usage": {
-                    "prompt_tokens": 0,
-                    "completion_tokens": 0,
-                    "total_tokens": 0
-                }
-            })
-
-    except Exception as e:
-        logger.error(f"Chat completion error: {e}")
-        return jsonify({"error": str(e)}), 500
 
 # ==================== Initialize ====================
 
