@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 import logging
 from functools import wraps
 import api_converters
+import kiro_chat
 
 # Optional CBOR support for Kiro API
 try:
@@ -1430,20 +1431,29 @@ def chat_completions():
             def generate():
                 try:
                     full_content = ''
+                    input_tokens = 0
+                    output_tokens = 0
                     
                     yield api_converters.create_openai_chunk('', model)
                     
-                    response_text = f"I received your request with model={model}. This is a demo response from Kiro Account Manager."
-                    
-                    for char in response_text:
-                        full_content += char
-                        yield api_converters.create_openai_chunk(char, model)
-                        time.sleep(0.01)
+                    for chunk_line in kiro_chat.call_kiro_chat_stream(account, messages, model, max_tokens):
+                        parsed = kiro_chat.parse_kiro_stream_chunk(chunk_line)
+                        
+                        if parsed and parsed.get('type') == 'content':
+                            text = parsed.get('text', '')
+                            if text:
+                                full_content += text
+                                output_tokens += len(text.split())
+                                yield api_converters.create_openai_chunk(text, model)
+                        elif parsed and parsed.get('type') == 'error':
+                            logger.error(f"Kiro stream error: {parsed.get('error')}")
+                            raise Exception(parsed.get('error', 'Unknown error'))
                     
                     yield api_converters.create_openai_chunk('', model, finish_reason='stop')
-                    yield 'data: [DONE]\n\n'
+                    yield 'data: [DONE]\\n\\n'
                     
-                    log_usage(model, len(str(messages)), len(full_content), api_key.get('id'))
+                    input_tokens = sum(len(str(m.get('content', '')).split()) for m in messages)
+                    log_usage(model, input_tokens, output_tokens, api_key.get('id'))
                     
                 except Exception as e:
                     logger.error(f"Streaming error: {e}")
@@ -1453,7 +1463,7 @@ def chat_completions():
                             'type': 'server_error'
                         }
                     }
-                    yield f'data: {json.dumps(error_chunk)}\n\n'
+                    yield f'data: {json.dumps(error_chunk)}\\n\\n'
             
             return Response(
                 stream_with_context(generate()),
@@ -1464,15 +1474,30 @@ def chat_completions():
                 }
             )
         else:
-            response_text = f"I received your request with model={model}. This is a demo response from Kiro Account Manager."
+            full_content = ''
+            input_tokens = 0
+            output_tokens = 0
             
-            log_usage(model, len(str(messages)), len(response_text), api_key.get('id'))
+            for chunk_line in kiro_chat.call_kiro_chat_stream(account, messages, model, max_tokens):
+                parsed = kiro_chat.parse_kiro_stream_chunk(chunk_line)
+                
+                if parsed and parsed.get('type') == 'content':
+                    text = parsed.get('text', '')
+                    if text:
+                        full_content += text
+                        output_tokens += len(text.split())
+                elif parsed and parsed.get('type') == 'error':
+                    logger.error(f"Kiro error: {parsed.get('error')}")
+                    raise Exception(parsed.get('error', 'Unknown error'))
+            
+            input_tokens = sum(len(str(m.get('content', '')).split()) for m in messages)
+            log_usage(model, input_tokens, output_tokens, api_key.get('id'))
             
             return jsonify(api_converters.create_openai_response(
-                response_text,
+                full_content,
                 model,
-                input_tokens=len(str(messages)),
-                output_tokens=len(response_text)
+                input_tokens=input_tokens,
+                output_tokens=output_tokens
             ))
             
     except Exception as e:
@@ -1518,6 +1543,9 @@ def anthropic_messages():
             def generate():
                 try:
                     message_id = f'msg_{uuid.uuid4().hex[:24]}'
+                    full_content = ''
+                    input_tokens = 0
+                    output_tokens = 0
                     
                     start_event = {
                         'type': 'message_start',
@@ -1529,32 +1557,38 @@ def anthropic_messages():
                             'model': model
                         }
                     }
-                    yield f'event: message_start\ndata: {json.dumps(start_event)}\n\n'
+                    yield f'event: message_start\\ndata: {json.dumps(start_event)}\\n\\n'
                     
                     block_start = {
                         'type': 'content_block_start',
                         'index': 0,
                         'content_block': {'type': 'text', 'text': ''}
                     }
-                    yield f'event: content_block_start\ndata: {json.dumps(block_start)}\n\n'
+                    yield f'event: content_block_start\\ndata: {json.dumps(block_start)}\\n\\n'
                     
-                    response_text = f"I received your Anthropic-format request with model={model}."
-                    full_content = ''
-                    
-                    for char in response_text:
-                        full_content += char
-                        yield api_converters.create_anthropic_chunk(char, model, message_id)
-                        time.sleep(0.01)
+                    for chunk_line in kiro_chat.call_kiro_chat_stream(account, openai_messages, model, max_tokens):
+                        parsed = kiro_chat.parse_kiro_stream_chunk(chunk_line)
+                        
+                        if parsed and parsed.get('type') == 'content':
+                            text = parsed.get('text', '')
+                            if text:
+                                full_content += text
+                                output_tokens += len(text.split())
+                                yield api_converters.create_anthropic_chunk(text, model, message_id)
+                        elif parsed and parsed.get('type') == 'error':
+                            logger.error(f"Kiro stream error: {parsed.get('error')}")
+                            raise Exception(parsed.get('error', 'Unknown error'))
                     
                     block_end = {'type': 'content_block_stop', 'index': 0}
-                    yield f'event: content_block_stop\ndata: {json.dumps(block_end)}\n\n'
+                    yield f'event: content_block_stop\\ndata: {json.dumps(block_end)}\\n\\n'
                     
                     yield api_converters.create_anthropic_chunk('', model, message_id, finish_reason='end_turn')
                     
                     message_end = {'type': 'message_stop'}
-                    yield f'event: message_stop\ndata: {json.dumps(message_end)}\n\n'
+                    yield f'event: message_stop\\ndata: {json.dumps(message_end)}\\n\\n'
                     
-                    log_usage(model, len(str(messages)), len(full_content), api_key.get('id'))
+                    input_tokens = sum(len(str(m.get('content', '')).split()) for m in messages)
+                    log_usage(model, input_tokens, output_tokens, api_key.get('id'))
                     
                 except Exception as e:
                     logger.error(f"Anthropic streaming error: {e}")
@@ -1565,7 +1599,7 @@ def anthropic_messages():
                             'message': str(e)
                         }
                     }
-                    yield f'event: error\ndata: {json.dumps(error_event)}\n\n'
+                    yield f'event: error\\ndata: {json.dumps(error_event)}\\n\\n'
             
             return Response(
                 stream_with_context(generate()),
@@ -1577,15 +1611,30 @@ def anthropic_messages():
                 }
             )
         else:
-            response_text = f"I received your Anthropic-format request with model={model}."
+            full_content = ''
+            input_tokens = 0
+            output_tokens = 0
             
-            log_usage(model, len(str(messages)), len(response_text), api_key.get('id'))
+            for chunk_line in kiro_chat.call_kiro_chat_stream(account, openai_messages, model, max_tokens):
+                parsed = kiro_chat.parse_kiro_stream_chunk(chunk_line)
+                
+                if parsed and parsed.get('type') == 'content':
+                    text = parsed.get('text', '')
+                    if text:
+                        full_content += text
+                        output_tokens += len(text.split())
+                elif parsed and parsed.get('type') == 'error':
+                    logger.error(f"Kiro error: {parsed.get('error')}")
+                    raise Exception(parsed.get('error', 'Unknown error'))
+            
+            input_tokens = sum(len(str(m.get('content', '')).split()) for m in messages)
+            log_usage(model, input_tokens, output_tokens, api_key.get('id'))
             
             return jsonify(api_converters.create_anthropic_response(
-                response_text,
+                full_content,
                 model,
-                input_tokens=len(str(messages)),
-                output_tokens=len(response_text)
+                input_tokens=input_tokens,
+                output_tokens=output_tokens
             ))
             
     except Exception as e:
