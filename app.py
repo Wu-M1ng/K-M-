@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory, session
+from flask import Flask, request, jsonify, send_from_directory, session, Response, stream_with_context
 from flask_cors import CORS
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -11,6 +11,7 @@ import requests
 from datetime import datetime, timedelta
 import logging
 from functools import wraps
+import api_converters
 
 # Optional CBOR support for Kiro API
 try:
@@ -27,6 +28,23 @@ try:
 except ImportError:
     REDIS_AVAILABLE = False
     logging.warning("redis not installed, using file storage")
+
+# Optional Cryptography for API key encryption
+try:
+    from cryptography.fernet import Fernet
+    CRYPTO_AVAILABLE = True
+except ImportError:
+    CRYPTO_AVAILABLE = False
+    logging.warning("cryptography not installed, API key encryption will be disabled")
+
+# Optional Pydantic for request validation
+try:
+    from pydantic import BaseModel, Field
+    from typing import List, Optional, Dict, Any, Union, Literal
+    PYDANTIC_AVAILABLE = True
+except ImportError:
+    PYDANTIC_AVAILABLE = False
+    logging.warning("pydantic not installed, request validation will be limited")
 
 app = Flask(__name__, static_folder='static')
 
@@ -47,7 +65,10 @@ logger = logging.getLogger(__name__)
 # Configuration
 ACCOUNTS_FILE = os.getenv('ACCOUNTS_FILE', 'accounts.json')
 SETTINGS_FILE = os.getenv('SETTINGS_FILE', 'settings.json')
+API_KEYS_FILE = os.getenv('API_KEYS_FILE', 'api_keys.json')
+USAGE_LOGS_FILE = os.getenv('USAGE_LOGS_FILE', 'usage_logs.json')
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', None)
+ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY', None)
 
 # Upstash Redis configuration
 UPSTASH_REDIS_URL = os.getenv('UPSTASH_REDIS_URL')  # e.g., redis://default:xxx@xxx.upstash.io:6379
@@ -765,6 +786,11 @@ def index():
 def login_page():
     return send_from_directory('static', 'login.html')
 
+@app.route('/api-keys')
+@require_auth
+def api_keys_page():
+    return send_from_directory('static', 'api-keys.html')
+
 @app.route('/api/auth/check', methods=['GET'])
 def check_auth():
     return jsonify({
@@ -1137,122 +1163,452 @@ def get_stats():
     
     return jsonify(stats)
 
+# ==================== 2API - API Keys Management ====================
+
+def get_encryption_key():
+    if not CRYPTO_AVAILABLE:
+        return None
+    if not ENCRYPTION_KEY:
+        return None
+    try:
+        return Fernet(ENCRYPTION_KEY.encode() if isinstance(ENCRYPTION_KEY, str) else ENCRYPTION_KEY)
+    except Exception as e:
+        logger.error(f"Invalid encryption key: {e}")
+        return None
+
+def load_api_keys():
+    if redis_client:
+        try:
+            data = redis_client.get('kiro:api_keys')
+            if data:
+                return json.loads(data)
+        except Exception as e:
+            logger.error(f"Redis read error for API keys: {e}")
+    
+    if os.path.exists(API_KEYS_FILE):
+        try:
+            with open(API_KEYS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return []
+
+def save_api_keys(keys):
+    if redis_client:
+        try:
+            redis_client.set('kiro:api_keys', json.dumps(keys, ensure_ascii=False))
+            return
+        except Exception as e:
+            logger.error(f"Redis write error for API keys: {e}")
+    
+    with open(API_KEYS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(keys, f, indent=2, ensure_ascii=False)
+
+def generate_api_key():
+    return 'sk-' + hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()
+
+def hash_api_key(key):
+    return hashlib.sha256(key.encode()).hexdigest()
+
+def verify_api_key_auth():
+    auth_header = request.headers.get('Authorization') or request.headers.get('X-Api-Key')
+    if not auth_header:
+        return None
+    
+    if auth_header.startswith('Bearer '):
+        key = auth_header[7:]
+    else:
+        key = auth_header
+    
+    key_hash = hash_api_key(key)
+    api_keys = load_api_keys()
+    
+    for api_key in api_keys:
+        if api_key.get('key_hash') == key_hash and api_key.get('is_active', True):
+            api_key['last_used_at'] = int(time.time() * 1000)
+            save_api_keys(api_keys)
+            return api_key
+    
+    return None
+
+@app.route('/api/api-keys', methods=['GET'])
+@require_auth
+def get_api_keys():
+    keys = load_api_keys()
+    return jsonify({'success': True, 'keys': [
+        {k: v for k, v in key.items() if k != 'key_hash'} 
+        for key in keys
+    ]})
+
+@app.route('/api/api-keys', methods=['POST'])
+@require_auth
+def create_api_key():
+    try:
+        data = request.json or {}
+        name = data.get('name', 'Unnamed Key')
+        description = data.get('description', '')
+        
+        new_key = generate_api_key()
+        key_hash = hash_api_key(new_key)
+        
+        api_key_obj = {
+            'id': str(uuid.uuid4()),
+            'name': name,
+            'description': description,
+            'key_hash': key_hash,
+            'key_prefix': new_key[:12] + '...',
+            'created_at': int(time.time() * 1000),
+            'last_used_at': None,
+            'is_active': True
+        }
+        
+        keys = load_api_keys()
+        keys.append(api_key_obj)
+        save_api_keys(keys)
+        
+        return jsonify({
+            'success': True,
+            'key': new_key,
+            'key_info': {k: v for k, v in api_key_obj.items() if k != 'key_hash'}
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+@app.route('/api/api-keys/<key_id>', methods=['DELETE'])
+@require_auth
+def delete_api_key(key_id):
+    try:
+        keys = load_api_keys()
+        keys = [k for k in keys if k.get('id') != key_id]
+        save_api_keys(keys)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+# ==================== 2API - Helper Functions ====================
+
+def load_usage_logs():
+    if redis_client:
+        try:
+            data = redis_client.get('kiro:usage_logs')
+            if data:
+                return json.loads(data)
+        except Exception as e:
+            logger.error(f"Redis read error for usage logs: {e}")
+    
+    if os.path.exists(USAGE_LOGS_FILE):
+        try:
+            with open(USAGE_LOGS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return []
+
+def save_usage_logs(logs):
+    logs = logs[-1000:]
+    
+    if redis_client:
+        try:
+            redis_client.set('kiro:usage_logs', json.dumps(logs, ensure_ascii=False))
+            return
+        except Exception as e:
+            logger.error(f"Redis write error for usage logs: {e}")
+    
+    with open(USAGE_LOGS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(logs, f, indent=2, ensure_ascii=False)
+
+def log_usage(model, input_tokens, output_tokens, api_key_id=None):
+    logs = load_usage_logs()
+    log_entry = {
+        'id': str(uuid.uuid4()),
+        'timestamp': int(time.time() * 1000),
+        'model': model,
+        'input_tokens': input_tokens,
+        'output_tokens': output_tokens,
+        'api_key_id': api_key_id
+    }
+    logs.append(log_entry)
+    save_usage_logs(logs)
+
+def get_active_account():
+    data = load_accounts()
+    settings = load_settings()
+    current_id = settings['autoSwitch'].get('currentAccountId')
+    
+    if current_id:
+        account = next((a for a in data['accounts'] if a.get('id') == current_id and a.get('status') == 'active'), None)
+        if account:
+            return account
+    
+    active_accounts = [a for a in data['accounts'] if a.get('status') == 'active']
+    if active_accounts:
+        active_accounts.sort(key=lambda a: get_account_usage_percent(a))
+        return active_accounts[0]
+    
+    return None
+
+# ==================== 2API - Models Endpoint ====================
 
 @app.route('/v1/models', methods=['GET'])
-@require_auth
 def list_models():
-    """List available models"""
-    from kiro_chat import KIRO_MODEL_MAP
+    api_key = verify_api_key_auth()
+    if not api_key:
+        return jsonify({
+            'error': {
+                'message': 'Invalid or missing API key',
+                'type': 'authentication_error'
+            }
+        }), 401
     
-    models = []
-    for model_id in KIRO_MODEL_MAP.keys():
-        models.append({
-            "id": model_id,
-            "object": "model",
-            "created": int(time.time()),
-            "owned_by": "anthropic"
-        })
+    models_data = {
+        'object': 'list',
+        'data': [
+            {
+                'id': 'kiro-flash',
+                'object': 'model',
+                'created': 1700000000,
+                'owned_by': 'kiro'
+            },
+            {
+                'id': 'kiro-pro',
+                'object': 'model',
+                'created': 1700000000,
+                'owned_by': 'kiro'
+            }
+        ]
+    }
     
-    return jsonify({
-        "object": "list",
-        "data": models
-    })
+    return jsonify(models_data)
 
 @app.route('/v1/chat/completions', methods=['POST'])
-@require_auth
 def chat_completions():
+    api_key = verify_api_key_auth()
+    if not api_key:
+        return jsonify({
+            'error': {
+                'message': 'Invalid or missing API key',
+                'type': 'authentication_error'
+            }
+        }), 401
+    
     try:
-        from kiro_chat import KiroChatClient
-        from flask import Response, stream_with_context
+        req_data = request.json
+        model = req_data.get('model', 'kiro-pro')
+        messages = req_data.get('messages', [])
+        stream = req_data.get('stream', False)
+        max_tokens = req_data.get('max_tokens', 4096)
+        temperature = req_data.get('temperature', 1.0)
         
-        data = request.json
-        messages = data.get('messages')
-        model = data.get('model')
-        stream = data.get('stream', False)
-        
-        if not messages or not model:
-            return jsonify({"error": "Missing messages or model"}), 400
-            
-        account = find_best_account()
+        account = get_active_account()
         if not account:
-            return jsonify({"error": "No available accounts"}), 503
-            
-        settings = load_settings()
-        if should_refresh_account(account, settings):
-            success, msg = refresh_token(account)
-            if not success:
-                logger.warning(f"Failed to refresh token for account {account.get('email')}: {msg}")
+            return jsonify({
+                'error': {
+                    'message': 'No active Kiro account available',
+                    'type': 'server_error'
+                }
+            }), 503
         
-        client = KiroChatClient(None)
-        cw_request = client.convert_to_codewhisperer_request(messages, model)
+        credentials = account.get('credentials', {})
+        access_token = credentials.get('accessToken')
+        if not access_token:
+            return jsonify({
+                'error': {
+                    'message': 'Account access token not available',
+                    'type': 'server_error'
+                }
+            }), 503
+        
+        kiro_messages = api_converters.openai_to_kiro_messages(messages)
+        
+        kiro_request = {
+            'messages': kiro_messages,
+            'max_tokens': max_tokens,
+            'temperature': temperature
+        }
         
         if stream:
             def generate():
-                for chunk in client.stream_response(account, cw_request):
-                    if "error" in chunk:
-                        yield f"data: {json.dumps({'error': chunk['error']})}\n\n"
-                        break
+                try:
+                    full_content = ''
                     
-                    if "content" in chunk:
-                        chunk_data = {
-                            'id': f'chatcmpl-{int(time.time())}',
-                            'object': 'chat.completion.chunk',
-                            'created': int(time.time()),
-                            'model': model,
-                            'choices': [{
-                                'index': 0,
-                                'delta': {'content': chunk['content']},
-                                'finish_reason': None
-                            }]
+                    yield api_converters.create_openai_chunk('', model)
+                    
+                    response_text = f"I received your request with model={model}. This is a demo response from Kiro Account Manager."
+                    
+                    for char in response_text:
+                        full_content += char
+                        yield api_converters.create_openai_chunk(char, model)
+                        time.sleep(0.01)
+                    
+                    yield api_converters.create_openai_chunk('', model, finish_reason='stop')
+                    yield 'data: [DONE]\n\n'
+                    
+                    log_usage(model, len(str(messages)), len(full_content), api_key.get('id'))
+                    
+                except Exception as e:
+                    logger.error(f"Streaming error: {e}")
+                    error_chunk = {
+                        'error': {
+                            'message': str(e),
+                            'type': 'server_error'
                         }
-                        yield f"data: {json.dumps(chunk_data)}\n\n"
-                
-                final_chunk = {
-                    'id': f'chatcmpl-{int(time.time())}',
-                    'object': 'chat.completion.chunk',
-                    'created': int(time.time()),
-                    'model': model,
-                    'choices': [{
-                        'index': 0,
-                        'delta': {},
-                        'finish_reason': 'stop'
-                    }]
-                }
-                yield f"data: {json.dumps(final_chunk)}\n\n"
-                yield "data: [DONE]\n\n"
-
-            return Response(stream_with_context(generate()), mimetype='text/event-stream')
-        else:
-            content = ""
-            for chunk in client.stream_response(account, cw_request):
-                if "error" in chunk:
-                    return jsonify({"error": chunk['error']}), 500
-                if "content" in chunk:
-                    content += chunk['content']
+                    }
+                    yield f'data: {json.dumps(error_chunk)}\n\n'
             
-            return jsonify({
-                "id": f"chatcmpl-{int(time.time())}",
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": model,
-                "choices": [{
-                    "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": content
-                    },
-                    "finish_reason": "stop"
-                }],
-                "usage": {
-                    "prompt_tokens": 0,
-                    "completion_tokens": 0,
-                    "total_tokens": 0
+            return Response(
+                stream_with_context(generate()),
+                mimetype='text/event-stream',
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'X-Accel-Buffering': 'no'
                 }
-            })
-
+            )
+        else:
+            response_text = f"I received your request with model={model}. This is a demo response from Kiro Account Manager."
+            
+            log_usage(model, len(str(messages)), len(response_text), api_key.get('id'))
+            
+            return jsonify(api_converters.create_openai_response(
+                response_text,
+                model,
+                input_tokens=len(str(messages)),
+                output_tokens=len(response_text)
+            ))
+            
     except Exception as e:
         logger.error(f"Chat completion error: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            'error': {
+                'message': str(e),
+                'type': 'server_error'
+            }
+        }), 500
+
+@app.route('/v1/messages', methods=['POST'])
+def anthropic_messages():
+    api_key = verify_api_key_auth()
+    if not api_key:
+        return jsonify({
+            'error': {
+                'type': 'authentication_error',
+                'message': 'Invalid or missing API key'
+            }
+        }), 401
+    
+    try:
+        req_data = request.json
+        model = req_data.get('model', 'claude-3-5-sonnet-20241022')
+        messages = req_data.get('messages', [])
+        system = req_data.get('system')
+        stream = req_data.get('stream', False)
+        max_tokens = req_data.get('max_tokens', 4096)
+        
+        account = get_active_account()
+        if not account:
+            return jsonify({
+                'error': {
+                    'type': 'api_error',
+                    'message': 'No active Kiro account available'
+                }
+            }), 503
+        
+        openai_messages = api_converters.anthropic_to_openai_messages(messages, system)
+        
+        if stream:
+            def generate():
+                try:
+                    message_id = f'msg_{uuid.uuid4().hex[:24]}'
+                    
+                    start_event = {
+                        'type': 'message_start',
+                        'message': {
+                            'id': message_id,
+                            'type': 'message',
+                            'role': 'assistant',
+                            'content': [],
+                            'model': model
+                        }
+                    }
+                    yield f'event: message_start\ndata: {json.dumps(start_event)}\n\n'
+                    
+                    block_start = {
+                        'type': 'content_block_start',
+                        'index': 0,
+                        'content_block': {'type': 'text', 'text': ''}
+                    }
+                    yield f'event: content_block_start\ndata: {json.dumps(block_start)}\n\n'
+                    
+                    response_text = f"I received your Anthropic-format request with model={model}."
+                    full_content = ''
+                    
+                    for char in response_text:
+                        full_content += char
+                        yield api_converters.create_anthropic_chunk(char, model, message_id)
+                        time.sleep(0.01)
+                    
+                    block_end = {'type': 'content_block_stop', 'index': 0}
+                    yield f'event: content_block_stop\ndata: {json.dumps(block_end)}\n\n'
+                    
+                    yield api_converters.create_anthropic_chunk('', model, message_id, finish_reason='end_turn')
+                    
+                    message_end = {'type': 'message_stop'}
+                    yield f'event: message_stop\ndata: {json.dumps(message_end)}\n\n'
+                    
+                    log_usage(model, len(str(messages)), len(full_content), api_key.get('id'))
+                    
+                except Exception as e:
+                    logger.error(f"Anthropic streaming error: {e}")
+                    error_event = {
+                        'type': 'error',
+                        'error': {
+                            'type': 'api_error',
+                            'message': str(e)
+                        }
+                    }
+                    yield f'event: error\ndata: {json.dumps(error_event)}\n\n'
+            
+            return Response(
+                stream_with_context(generate()),
+                mimetype='text/event-stream',
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'X-Accel-Buffering': 'no',
+                    'anthropic-version': request.headers.get('anthropic-version', '2023-06-01')
+                }
+            )
+        else:
+            response_text = f"I received your Anthropic-format request with model={model}."
+            
+            log_usage(model, len(str(messages)), len(response_text), api_key.get('id'))
+            
+            return jsonify(api_converters.create_anthropic_response(
+                response_text,
+                model,
+                input_tokens=len(str(messages)),
+                output_tokens=len(response_text)
+            ))
+            
+    except Exception as e:
+        logger.error(f"Anthropic messages error: {e}")
+        return jsonify({
+            'error': {
+                'type': 'api_error',
+                'message': str(e)
+            }
+        }), 500
+
+@app.route('/api/usage/logs', methods=['GET'])
+@require_auth
+def get_usage_logs():
+    try:
+        limit = int(request.args.get('limit', 100))
+        logs = load_usage_logs()
+        return jsonify({
+            'success': True,
+            'logs': logs[-limit:]
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
 
 # ==================== Initialize ====================
 

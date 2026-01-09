@@ -73,31 +73,6 @@
                 </div>
             </div>
             <div class="stats-grid" id="stats"></div>
-            
-            <div class="api-info-card glass-card" style="margin-top: 20px; padding: 20px; border: 1px solid var(--primary); background: rgba(99, 102, 241, 0.1);">
-                <h3 style="color: var(--primary-light); margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
-                    🤖 OpenAI 兼容接口 (2API)
-                </h3>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; font-size: 13px;">
-                    <div>
-                        <div style="color: var(--text-muted); margin-bottom: 4px;">Base URL</div>
-                        <div class="code-box" style="background: rgba(0,0,0,0.3); padding: 8px; border-radius: 6px; font-family: monospace;">
-                            <span id="baseUrlDisplay">http://localhost:8000/v1</span>
-                            <button class="copy-btn-sm" onclick="copyText('baseUrlDisplay')">复制</button>
-                        </div>
-                    </div>
-                    <div>
-                        <div style="color: var(--text-muted); margin-bottom: 4px;">API Key</div>
-                        <div class="code-box" style="background: rgba(0,0,0,0.3); padding: 8px; border-radius: 6px; font-family: monospace;">
-                            <span>(您的管理员密码)</span>
-                        </div>
-                    </div>
-                    <div>
-                        <div style="color: var(--text-muted); margin-bottom: 4px;">可用模型示例</div>
-                        <div style="color: var(--text);">claude-sonnet-4-5, claude-opus-4-5-20251101</div>
-                    </div>
-                </div>
-            </div>
         </header>
 
         <div class="toolbar">
@@ -715,18 +690,6 @@
             color: var(--success);
         }
 
-        .copy-btn-sm {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 10px;
-            cursor: pointer;
-            float: right;
-            margin-left: 8px;
-        }
-
         /* Toggle Switch */
         .toggle {
             position: relative;
@@ -940,12 +903,6 @@
 
         function renderAccounts() {
             const container = document.getElementById('accounts');
-            // Update Base URL display
-            const baseUrlDisplay = document.getElementById('baseUrlDisplay');
-            if (baseUrlDisplay) {
-                baseUrlDisplay.innerText = `${window.location.origin}/v1`;
-            }
-
             if (accounts.length === 0) {
                 container.innerHTML = `
                     <div class="loading-state" style="grid-column: 1/-1;">
@@ -1569,16 +1526,12 @@
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), 3000);
         }
-        function copyText(elementId) {
-            const el = document.getElementById(elementId);
-            const text = el.innerText || el.textContent;
-            navigator.clipboard.writeText(text).then(() => {
-                const btn = el.nextElementSibling;
-                const originalText = btn.innerText;
-                btn.innerText = '已复制';
-                setTimeout(() => btn.innerText = originalText, 1500);
-            });
-        }
     </script>
+    <style>
+        @keyframes slideIn {
+            from { transform: translateX(100px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
 </body>
 </html>

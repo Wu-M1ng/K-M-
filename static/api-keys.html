@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Keys - Kiro Account Manager</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        .nav-links {
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .nav-links a {
+            color: #667eea;
+            text-decoration: none;
+            margin-right: 20px;
+            font-weight: 500;
+        }
+
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: transform 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .api-keys-list {
+            margin-top: 30px;
+        }
+
+        .api-key-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+        }
+
+        .api-key-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .api-key-name {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .api-key-prefix {
+            font-family: 'Courier New', monospace;
+            background: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            color: #666;
+            margin-top: 10px;
+            display: inline-block;
+        }
+
+        .api-key-meta {
+            color: #888;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .modal-header {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            font-family: inherit;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .new-key-display {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 15px;
+        }
+
+        .new-key-display strong {
+            display: block;
+            margin-bottom: 10px;
+            color: #856404;
+        }
+
+        .new-key-value {
+            font-family: 'Courier New', monospace;
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
+            word-break: break-all;
+            color: #333;
+        }
+
+        .copy-btn {
+            margin-top: 10px;
+            background: #28a745;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔑 API Keys 管理</h1>
+        <p class="subtitle">管理你的 2API 访问密钥</p>
+
+        <div class="nav-links">
+            <a href="/">← 返回账号管理</a>
+        </div>
+
+        <button class="btn" onclick="showCreateModal()">➕ 创建新 API Key</button>
+
+        <div class="api-keys-list" id="apiKeysList">
+            <div class="empty-state">
+                <div class="empty-state-icon">🔐</div>
+                <p>暂无 API Key，点击上方按钮创建一个</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="createModal">
+        <div class="modal-content">
+            <div class="modal-header">创建 API Key</div>
+            <div class="form-group">
+                <label>名称</label>
+                <input type="text" id="keyName" placeholder="例如：Production Key">
+            </div>
+            <div class="form-group">
+                <label>描述（可选）</label>
+                <textarea id="keyDescription" rows="3" placeholder="这个 Key 的用途"></textarea>
+            </div>
+            <div id="newKeyDisplay" style="display: none;" class="new-key-display">
+                <strong>⚠️ 请妥善保存你的 API Key，它只会显示一次：</strong>
+                <div class="new-key-value" id="newKeyValue"></div>
+                <button class="btn copy-btn" onclick="copyKey()">📋 复制</button>
+            </div>
+            <div class="modal-actions">
+                <button class="btn" onclick="createApiKey()">创建</button>
+                <button class="btn btn-danger" onclick="closeCreateModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadApiKeys() {
+            try {
+                const response = await fetch('/api/api-keys', {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayApiKeys(data.keys);
+                }
+            } catch (error) {
+                console.error('加载 API Keys 失败:', error);
+            }
+        }
+
+        function displayApiKeys(keys) {
+            const container = document.getElementById('apiKeysList');
+            
+            if (keys.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔐</div>
+                        <p>暂无 API Key，点击上方按钮创建一个</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = keys.map(key => `
+                <div class="api-key-card">
+                    <div class="api-key-header">
+                        <div class="api-key-name">${key.name}</div>
+                        <button class="btn btn-danger" onclick="deleteApiKey('${key.id}')">🗑️ 删除</button>
+                    </div>
+                    ${key.description ? `<div style="color: #666; margin-top: 8px;">${key.description}</div>` : ''}
+                    <div class="api-key-prefix">${key.key_prefix}</div>
+                    <div class="api-key-meta">
+                        创建于: ${new Date(key.created_at).toLocaleString('zh-CN')}
+                        ${key.last_used_at ? ` | 最后使用: ${new Date(key.last_used_at).toLocaleString('zh-CN')}` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function showCreateModal() {
+            document.getElementById('createModal').classList.add('show');
+            document.getElementById('keyName').value = '';
+            document.getElementById('keyDescription').value = '';
+            document.getElementById('newKeyDisplay').style.display = 'none';
+        }
+
+        function closeCreateModal() {
+            document.getElementById('createModal').classList.remove('show');
+        }
+
+        async function createApiKey() {
+            const name = document.getElementById('keyName').value.trim();
+            if (!name) {
+                alert('请输入 API Key 名称');
+                return;
+            }
+
+            const description = document.getElementById('keyDescription').value.trim();
+
+            try {
+                const response = await fetch('/api/api-keys', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ name, description })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('newKeyValue').textContent = data.key;
+                    document.getElementById('newKeyDisplay').style.display = 'block';
+                    loadApiKeys();
+                } else {
+                    alert('创建失败: ' + (data.error || '未知错误'));
+                }
+            } catch (error) {
+                console.error('创建 API Key 失败:', error);
+                alert('创建失败: ' + error.message);
+            }
+        }
+
+        async function deleteApiKey(keyId) {
+            if (!confirm('确定要删除这个 API Key 吗？此操作不可恢复！')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/api-keys/${keyId}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    loadApiKeys();
+                } else {
+                    alert('删除失败: ' + (data.error || '未知错误'));
+                }
+            } catch (error) {
+                console.error('删除 API Key 失败:', error);
+                alert('删除失败: ' + error.message);
+            }
+        }
+
+        function copyKey() {
+            const keyValue = document.getElementById('newKeyValue').textContent;
+            navigator.clipboard.writeText(keyValue).then(() => {
+                alert('✅ API Key 已复制到剪贴板！');
+            });
+        }
+
+        document.getElementById('createModal').addEventListener('click', (e) => {
+            if (e.target.id === 'createModal') {
+                closeCreateModal();
+            }
+        });
+
+        loadApiKeys();
+    </script>
+</body>
+</html>

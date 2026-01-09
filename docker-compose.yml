@@ -12,11 +12,16 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
       - REFRESH_INTERVAL=${REFRESH_INTERVAL:-3600}
       - ACCOUNTS_FILE=/app/data/accounts.json
+      - SETTINGS_FILE=/app/data/settings.json
+      - API_KEYS_FILE=/app/data/api_keys.json
+      - USAGE_LOGS_FILE=/app/data/usage_logs.json
       - SECRET_KEY=${SECRET_KEY:-}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+      - UPSTASH_REDIS_URL=${UPSTASH_REDIS_URL:-}
     volumes:
       - ./data:/app/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/auth/check')"]
       interval: 30s
       timeout: 10s
       retries: 3
