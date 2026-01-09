@@ -1,9 +1,10 @@
 # Kiro Account Manager
 
-一个用于管理 Kiro 账号的 Web 应用，支持自动刷新 Token 和机器码绑定。
+一个用于管理 Kiro 账号的 Web 应用，支持自动刷新 Token、机器码绑定，并提供 OpenAI 兼容的 API 接口 (2api)。
 
 ## 功能特性
 
+- 🤖 **OpenAI 兼容接口** - 提供 `/v1/chat/completions` 和 `/v1/models`，支持流式输出
 - 🔐 密码保护 - 通过环境变量设置管理密码
 - 📥 导入/导出账号 JSON 数据
 - 🔄 自动定时刷新所有账号 Token
@@ -80,45 +81,35 @@ docker run -d \
   kiro-account-manager
 ```
 
-### 方法 3: 使用预构建的 Docker 镜像
-
-```bash
-# 从 GitHub Container Registry 拉取
-docker pull ghcr.io/yourusername/kiro-account-manager:latest
-
-# 运行
-docker run -d \
-  -p 8000:8000 \
-  -e ADMIN_PASSWORD=your_secure_password \
-  -v $(pwd)/data:/app/data \
-  ghcr.io/yourusername/kiro-account-manager:latest
-```
-
-### 方法 4: 部署到 Koyeb
-
-#### 通过 Git 部署
-
-1. 将代码推送到 GitHub 仓库
-
-2. 在 Koyeb 控制台创建新应用：
-   - 选择 GitHub 仓库
-   - 构建器：Buildpack
-   - 构建命令：`pip install -r requirements.txt`
-   - 运行命令：`gunicorn app:app --bind 0.0.0.0:$PORT --workers 2`
-   - 端口：8000
-
-3. 设置环境变量：
-   - `ADMIN_PASSWORD`: 管理密码（必需）
-   - `REFRESH_INTERVAL`: Token 刷新间隔（秒），默认 3600
-   - `SECRET_KEY`: Flask session 密钥（可选）
-
-#### 通过 Docker 部署
-
-1. 在 Koyeb 选择 Docker 部署方式
-2. 使用镜像：`ghcr.io/yourusername/kiro-account-manager:latest`
-3. 设置相同的环境变量
-
 ## 使用说明
+
+### API 调用 (OpenAI 兼容)
+
+您可以使用任何支持 OpenAI API 的客户端连接到本服务。
+
+- **Base URL**: `http://your-domain.com/v1`
+- **API Key**: 您的 `ADMIN_PASSWORD` (Bearer Token)
+- **Model**: `claude-sonnet-4-5`, `claude-opus-4-5-20251101` 等
+
+**示例 (Python):**
+
+```python
+import openai
+
+client = openai.OpenAI(
+    base_url="http://localhost:8000/v1",
+    api_key="your_secure_password"
+)
+
+response = client.chat.completions.create(
+    model="claude-sonnet-4-5",
+    messages=[{"role": "user", "content": "Hello!"}],
+    stream=True
+)
+
+for chunk in response:
+    print(chunk.choices[0].delta.content or "", end="")
+```
 
 ### 导入账号
 
@@ -133,16 +124,15 @@ docker run -d \
 - **所有账号**：点击顶部的"🔄 刷新所有Token"按钮
 - **自动刷新**：系统会每小时自动刷新所有账号的 Token
 
-### 管理机器码
-
-- 每个账号会自动绑定一个唯一的 32 位机器码
-- 点击"🔑 重新生成机器码"可以为账号生成新的机器码
-
 ### 导出账号
 
 点击"📤 导出账号"按钮，下载包含所有账号信息的 JSON 文件
 
-## API 接口
+## API 接口列表
+
+### 2API 接口 (OpenAI 兼容)
+- `GET /v1/models` - 获取可用模型列表
+- `POST /v1/chat/completions` - 对话补全 (支持流式)
 
 ### 认证接口
 - `GET /api/auth/check` - 检查认证状态
@@ -158,51 +148,6 @@ docker run -d \
 - `POST /api/accounts/<id>/machine-id` - 重新生成机器码
 - `GET /api/export` - 导出账号
 - `GET /api/stats` - 获取统计信息
-
-## 注意事项
-
-- **必须设置 `ADMIN_PASSWORD` 环境变量**来保护系统访问
-- 账号数据存储在 `accounts.json` 文件中
-- Token 会自动定时刷新，默认间隔 1 小时
-- 机器码在导入时自动生成，每个账号唯一
-- 建议定期备份账号数据
-- 如果不设置密码，系统将允许无认证访问（不推荐用于生产环境）
-
-## GitHub Actions 自动构建
-
-项目包含 GitHub Actions 工作流，可以自动构建和发布 Docker 镜像到 GitHub Container Registry。
-
-### 设置步骤
-
-1. **无需额外配置** - GitHub Actions 会自动使用 `GITHUB_TOKEN` 进行认证
-
-2. 推送代码到 `main` 或 `master` 分支，自动触发构建
-
-3. 镜像会发布到：
-   - GitHub Container Registry: `ghcr.io/yourusername/kiro-account-manager`
-
-### 版本标签
-
-- `latest`: 最新的 main/master 分支构建
-- `v1.0.0`: 语义化版本标签（推送 git tag 时触发）
-- `main`: main 分支的最新构建
-
-### 使镜像公开访问
-
-默认情况下，镜像是私有的。要使其公开：
-
-1. 访问 `https://github.com/yourusername/kiro-account-manager/pkgs/container/kiro-account-manager`
-2. 点击 "Package settings"
-3. 在 "Danger Zone" 中选择 "Change visibility"
-4. 设置为 "Public"
-
-## 技术栈
-
-- Backend: Flask + APScheduler
-- Frontend: Vanilla JavaScript
-- Containerization: Docker + Docker Compose
-- CI/CD: GitHub Actions
-- Deployment: Koyeb / Docker / 任何支持容器的平台
 
 ## License
 

@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
 COPY app.py .
+COPY kiro_chat.py .
 COPY static/ ./static/
 
 # Create data directory for persistent storage
