@@ -1254,26 +1254,6 @@ def chat_completions():
         logger.error(f"Chat completion error: {e}")
         return jsonify({"error": str(e)}), 500
 
-
-@app.route('/v1/models', methods=['GET'])
-@require_auth
-def list_models():
-    from kiro_chat import KIRO_MODEL_MAP
-    
-    models = []
-    for model_id in KIRO_MODEL_MAP.keys():
-        models.append({
-            "id": model_id,
-            "object": "model",
-            "created": int(time.time()),
-            "owned_by": "anthropic"
-        })
-    
-    return jsonify({
-        "object": "list",
-        "data": models
-    })
-
 # ==================== Initialize ====================
 
 # Start scheduler
